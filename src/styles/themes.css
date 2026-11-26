@@ -40,6 +40,11 @@
   --grid-y-major: #6fa39c;
 
   --accent: #c2410c;
+  --point: #1f5f8b;
+  --point-label: #1f4e6e;
+  --focus-ring: #1f5f8b;
+  --danger: #b42318;
+  --overlay-bg: rgba(253, 252, 249, 0.88);
   --control-active: #22211e;
   --control-active-text: #fdfcf9;
 }
@@ -66,6 +71,11 @@
   --grid-y-major: #3f8a81;
 
   --accent: #ff9e64;
+  --point: #7cc4f2;
+  --point-label: #a8d8f5;
+  --focus-ring: #7cc4f2;
+  --danger: #f97066;
+  --overlay-bg: rgba(21, 24, 28, 0.88);
   --control-active: #d8dde3;
   --control-active-text: #0f1114;
 }

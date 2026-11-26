@@ -3,10 +3,12 @@
 An interactive, freeform Smith Chart workspace. SmithLab aims to be a
 mathematical instrument rather than a form-based impedance calculator.
 
-**Status: Milestone 1.** This milestone covers the mathematical engine, the
-geometry engine, and a mathematically generated SVG Smith Chart with light and
-dark themes. Interactive point manipulation, transmission lines, circuit
-elements and persistence are planned for later milestones.
+**Status: Milestone 2 — interactive workspace.** Milestone 1 built the
+mathematical engine, the geometry engine and a mathematically generated SVG
+Smith Chart. Milestone 2 adds direct manipulation: you can click to place
+impedance points, drag them, inspect their electrical quantities, change Z₀,
+and pan and zoom the chart. Transmission lines, circuit elements and
+persistence are planned for later milestones.
 
 ---
 
@@ -46,16 +48,28 @@ src/
 │   ├── labels.ts             Label anchors and directions in the Γ-plane
 │   └── index.ts
 │
+├── workspace/     Workspace state. Pure TS; depends only on core.
+│   ├── workspace.ts      Reducer: points {id, name, Γ}, selection, Z₀
+│   ├── quantities.ts     z, Z, Γ, |Γ|, ∠Γ, VSWR, RL, y for a point (+ load kind)
+│   └── disc.ts           Clamp to |Γ| ≤ 1; snap to match/short/open
+│
 ├── chart/         Rendering. Maps geometry to SVG; contains no Smith maths.
+│   ├── viewport.ts       Pan/zoom view model; screen ↔ SVG ↔ Γ (pure, tested)
 │   ├── svg-path.ts       Shape → SVG path data (pure, tested)
-│   ├── screen.ts         Client (screen) pixels → SVG user space
-│   ├── SmithChart.tsx    The <svg>: frame, grids, labels, clipping, pointer
-│   ├── ChartGrid.tsx
-│   ├── ChartLabels.tsx
-│   ├── CursorOverlay.tsx Read-only hover overlay
+│   ├── SmithChart.tsx    Pure renderer: frame, grids, labels, points, overlay
+│   ├── ChartGrid.tsx, ChartLabels.tsx
+│   ├── PointsLayer.tsx   Point markers, hit areas, focusable for keyboard
+│   ├── SelectionOverlay.tsx  Constant r / x / |Γ| curves through the selection
 │   └── chart.css
 │
-├── components/    Application UI (toolbar, theme switcher, point inspector)
+├── interaction/   Pointer and keyboard input.
+│   ├── gestures.ts       Pure gesture state machine → commands (tested)
+│   ├── keyboard.ts       Pure key → command mapping (tested)
+│   ├── useChartInteraction.ts  DOM adapter: pointer capture, hit-testing, wheel
+│   ├── useKeyboardShortcuts.ts, useElementSize.ts
+│
+├── components/    Application UI: toolbar, Z₀ control, inspector, point list,
+│                  view controls, hover status, theme switcher
 ├── styles/        themes.css (all colour/weight tokens), global.css
 ├── App.tsx
 └── main.tsx
@@ -63,9 +77,22 @@ src/
 tests/             Vitest suites for core, geometry and SVG path generation
 ```
 
-Dependencies point one way only: `core ← geometry ← chart ← components/App`.
-`core` and `geometry` are plain TypeScript and can be reused in a worker, a
-CLI, or a Tauri backend.
+Dependencies point one way only:
+`core ← geometry ← chart ← components/App` and `core ← workspace ← interaction ← App`.
+`core`, `geometry`, `workspace`, `chart/viewport.ts` and the `interaction`
+state machines are plain TypeScript with no React, and can be reused in a
+worker, a CLI or a Tauri backend.
+
+### Interaction data flow
+
+```
+pointer / wheel / key event
+  → useChartInteraction / useKeyboardShortcuts   (gather rect, hit target, modifiers)
+  → gestures.ts / keyboard.ts                    (pure: decide, return commands)
+  → App.applyCommand                             (the one place commands become state)
+  → workspaceReducer / setView
+  → SmithChart (pure render) + PointInspector (quantities from core)
+```
 
 ### Layer responsibilities
 
@@ -73,6 +100,8 @@ CLI, or a Tauri backend.
 |-------|-------------|---------------------|
 | `core` | complex numbers, z, y, Γ, VSWR | geometry, SVG, React |
 | `geometry` | circles and arcs in the Γ-plane, grid layout, label anchors | SVG pixels, React, CSS |
+| `workspace` | points, selection, Z₀, derived quantities | screen, SVG, React |
+| `interaction` | pointer/keyboard semantics, thresholds | Smith Chart formulas, rendering |
 | `chart` | SVG user space, the screen, React | Smith Chart formulas |
 
 Each grid curve is built twice over. Its circle **centre and radius** come
@@ -177,7 +206,9 @@ Full documentation is in `src/geometry/coordinates.ts`.
 1. **Γ-plane.** This is the mathematical space, and all geometry lives here. +v points up.
 2. **SVG user space.** This is a fixed viewBox with the unit circle at radius `CHART_RADIUS = 1000` and a 120-unit label margin:
    `x = u·R`, `y = −v·R` (y is negated because SVG's y axis points down).
-3. **Screen.** The browser maps user space to the screen with `preserveAspectRatio="xMidYMid meet"`, which applies a uniform scale, so the chart is never distorted. `chart/screen.ts` inverts the element's screen CTM, and `svgToGamma` completes the trip back to Γ.
+3. **Screen.** The browser maps user space to the screen with `preserveAspectRatio="xMidYMid meet"`, which applies a uniform scale, so the chart is never distorted. `chart/viewport.ts` reproduces that mapping as pure functions (`screenToSvg`, `svgToScreen`, `screenToGamma`, `gammaToScreen`), taking the element's bounding rectangle as the only DOM input. This keeps the mapping unit-testable, and it was checked against the browser's own `getScreenCTM()`.
+
+**Pan and zoom.** The view is `{ center: Γ, zoom }`. The viewBox is derived from it and is always square, so the chart stays circular at every zoom level and window size. Zoom anchors at the cursor, and pan keeps the grabbed point under the pointer. Zoom is limited to 0.8×–500×, and the centre is kept within ±1.25 so the chart can't be lost off-screen. Point markers, labels and line weights keep a constant on-screen size.
 
 Stroke widths are given in CSS pixels with `vector-effect: non-scaling-stroke`,
 so line weights stay the same at every chart size.
@@ -197,17 +228,57 @@ first paint to prevent a flash of the wrong theme.
 
 ---
 
-## What the UI does today
+## Using the workspace
 
-- A mathematically generated impedance Smith Chart, with resistance and ±reactance labels and a marked matched-load centre.
-- An optional admittance (Y) grid overlay.
-- A **point inspector**: hovering shows Γ (rectangular and polar), z, y, Z at Z₀ = 50 Ω, VSWR and return loss at the pointer. It also draws the constant-r circle, constant-x arc and constant-|Γ| circle through that point. This is read-only. It exercises the full screen → Γ → core pipeline, but points cannot yet be created or dragged.
+| Action | Result |
+|--------|--------|
+| Click inside the chart | Create a point at that Γ and select it |
+| Click outside the chart | Deselect |
+| Press and drag a point | Select and move it; values update live |
+| Drag the background (or middle-drag anywhere) | Pan |
+| Scroll / pinch | Zoom at the cursor |
+| − / + / Fit buttons, or `−` `+` `0` | Zoom out / in / reset view |
+| Arrow keys (Shift ×10) | Nudge the selected point |
+| Delete / Backspace | Delete the selected point |
+| Esc | Deselect |
+| Tab | Focus (and select) points in turn |
+| Hold Alt while placing or dragging | Disable snapping |
+
+Interaction rules:
+
+- **Thresholds.** A press only becomes a drag or pan after moving more than 4 px. A click on a point therefore never nudges it, and a pan never creates a point.
+- **Priority.** A hit on a point always wins over the background. The selected point is drawn last, so it is on top for hit-testing. Hit areas are 14 px in radius, larger than the visible marker.
+- **Grab offset.** Dragging keeps the offset between the cursor and the point, so the point doesn't jump when picked up.
+- **Clamping.** Points are always kept within |Γ| ≤ 1. Dragging past the edge slides the point along the boundary, giving a lossless load.
+- **Snapping.** Within 8 px of Γ = 0, −1 or +1, a point snaps to an exact matched load, short or open circuit. This makes those cases reachable by hand.
+- **Keyboard and text fields.** Keyboard shortcuts are inactive while typing in a text field, so Backspace in the name field never deletes a point.
+
+### Point inspector
+
+For the selected point it shows z, Z (at the current Z₀), Γ, |Γ|, ∠Γ, VSWR,
+return loss and y, with a badge for matched, short, open or lossless loads. The
+name can be edited inline. Special cases:
+
+- **Matched (Γ = 0):** VSWR 1, return loss ∞ dB, phase shown as undefined.
+- **Short:** z = 0, y = ∞.
+- **Open:** z = Z = ∞, y = 0.
+- **On the boundary:** r and g are exactly 0, removing ±1e-16 round-off.
+
+### Characteristic impedance
+
+The Z₀ field in the toolbar applies valid positive values immediately. Invalid
+entries are flagged and revert when the field loses focus. Points are stored by
+Γ (the chart coordinate), so **changing Z₀ keeps every point where it is**: its
+normalised z is unchanged and its physical Z = z·Z₀ is re-derived.
 
 ---
 
 ## Known limitations
 
-- **Z₀ is fixed at 50 Ω in the inspector.** Every core function accepts any real Z₀, but there is no UI to change it yet.
+- **No pinch-zoom on touch screens.** Touch supports tap-to-create, dragging points and one-finger pan. Trackpad pinch works, because it arrives as ctrl+wheel. Two-finger touch pinch is not yet implemented.
+- **The grid doesn't adapt to zoom.** At high zoom the default grid becomes sparse. A grid whose density follows the zoom level is a later refinement.
+- **No undo.** Clear all asks for confirmation, but deleting a single point and moving points can't be undone yet.
+- **Workspace is not persisted.** Reloading the page clears points (persistence is out of scope).
 - **Labels scale with the chart.** On very small viewports (under about 350 px chart diameter), labels become small. Size-aware label density is a future refinement.
 - **The admittance grid has no labels.** Its labels would collide with the impedance labels. A Y-only display mode with its own labels is planned.
 - **Precision near Γ = +1.** Computing `z = (1 + Γ)/(1 − Γ)` close to the open-circuit point loses relative precision to cancellation in `1 − Γ`. This is inherent to the representation. Values stay finite and are correct to about `ε/|1 − Γ|`.

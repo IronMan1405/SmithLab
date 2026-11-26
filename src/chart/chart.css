@@ -4,7 +4,8 @@
   display: block;
   width: 100%;
   height: 100%;
-  overflow: visible;
+  /* Zoomed content must stay inside the chart area. */
+  overflow: hidden;
   user-select: none;
   touch-action: none;
 }
@@ -59,34 +60,79 @@
 
 .chart-label {
   font-family: var(--font-mono);
-  font-size: 30px; /* SVG user units: scales with the chart */
   fill: var(--chart-label);
   paint-order: stroke;
   stroke: var(--chart-label-halo);
-  stroke-width: 6px;
   stroke-linejoin: round;
   pointer-events: none;
 }
-.label-axis-end {
-  font-size: 36px;
+
+/* Interaction cursors */
+.smith-chart {
+  cursor: crosshair;
+}
+.smith-chart[data-gesture='pan'] {
+  cursor: grabbing;
+}
+.smith-chart[data-gesture='drag-point'] {
+  cursor: grabbing;
 }
 
-.cursor-overlay {
+/* Selection overlay: curves through the selected point */
+.selection-overlay {
   pointer-events: none;
 }
-.cursor-curve {
+.selection-curve {
   stroke: var(--accent);
   stroke-width: var(--stroke-cursor);
-  opacity: 0.85;
+  opacity: 0.75;
 }
-.cursor-vswr {
+.selection-vswr {
   stroke: var(--accent);
   stroke-width: var(--stroke-cursor);
   stroke-dasharray: 4 4;
-  opacity: 0.6;
+  opacity: 0.55;
 }
-.cursor-point {
-  fill: var(--accent) !important;
+
+/* Plotted points */
+.point {
+  cursor: grab;
+  outline: none;
+}
+.smith-chart[data-gesture='drag-point'] .point {
+  cursor: grabbing;
+}
+.point-hit {
+  fill: transparent !important;
+  stroke: none;
+  pointer-events: all;
+}
+.point-dot {
+  fill: var(--point) !important;
   stroke: var(--chart-disc);
   stroke-width: 1.5px;
+}
+.point.selected .point-dot {
+  fill: var(--accent) !important;
+}
+.point-ring {
+  stroke: var(--accent);
+  stroke-width: 2px;
+}
+.point:focus-visible .point-hit {
+  stroke: var(--focus-ring);
+  stroke-width: 2px;
+  stroke-dasharray: 3 2;
+}
+.point-label {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  fill: var(--point-label);
+  paint-order: stroke;
+  stroke: var(--chart-label-halo);
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.point.selected .point-label {
+  fill: var(--accent);
 }

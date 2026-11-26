@@ -3,11 +3,16 @@ import { type ChartLabel, gammaToSvg } from '../geometry';
 
 interface ChartLabelsProps {
   readonly labels: readonly ChartLabel[];
+  /** Current view zoom; label size and offsets are divided by it so text keeps its size on screen. */
+  readonly zoom: number;
 }
 
-/** Gap between a label's anchor and its text, in SVG user units. */
+/** Sizes in SVG user units at zoom 1. */
 const AXIS_GAP = 14;
 const BOUNDARY_GAP = 22;
+const FONT_SIZE = 30;
+const AXIS_END_FONT_SIZE = 36;
+const HALO = 6;
 
 type Anchor = 'start' | 'middle' | 'end';
 type Baseline = 'alphabetic' | 'central' | 'hanging';
@@ -19,16 +24,17 @@ function alignment(direction: { re: number; im: number }): { anchor: Anchor; bas
   return { anchor, baseline };
 }
 
-export const ChartLabels = memo(function ChartLabels({ labels }: ChartLabelsProps) {
+export const ChartLabels = memo(function ChartLabels({ labels, zoom }: ChartLabelsProps) {
   return (
     <g className="labels">
       {labels.map((label) => {
         const base = gammaToSvg(label.anchor);
-        const gap = label.role === 'resistance' ? AXIS_GAP : BOUNDARY_GAP;
+        const gap = (label.role === 'resistance' ? AXIS_GAP : BOUNDARY_GAP) / zoom;
         // Direction is a Γ-plane vector: flip its imaginary part for SVG.
         const x = base.x + label.direction.re * gap;
         const y = base.y - label.direction.im * gap;
         const { anchor, baseline } = alignment(label.direction);
+        const fontSize = (label.role === 'axis-end' ? AXIS_END_FONT_SIZE : FONT_SIZE) / zoom;
         return (
           <text
             key={label.id}
@@ -37,6 +43,7 @@ export const ChartLabels = memo(function ChartLabels({ labels }: ChartLabelsProp
             textAnchor={anchor}
             dominantBaseline={baseline}
             className={`chart-label label-${label.role}`}
+            style={{ fontSize, strokeWidth: HALO / zoom }}
           >
             {label.text}
           </text>
