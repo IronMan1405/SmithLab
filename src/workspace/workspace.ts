@@ -11,16 +11,22 @@
  * Derived points (see `derived.ts`) store a source id and a transform, never
  * a Γ; their Γ is recomputed from the source whenever it is needed.
  *
+ * Expressions are stored only as their text (plus enabled/visible/slider
+ * flags); values, types, dependencies and plot positions are derived by the
+ * expression engine (`src/expressions`) and never stored here.
+ *
  * Invariants maintained by the reducer:
  *   - every point (plotted or derived) has a unique, stable string id;
  *   - every plotted point satisfies |Γ| ≤ 1 (derived points inherit this,
  *     since lossless lines preserve |Γ|);
  *   - every derived point's source exists (deleting a point deletes its
  *     dependents);
- *   - `selectedId` is null or the id of an existing point of either kind;
+ *   - `selectedId` is null or the id of an existing point (plotted, derived)
+ *     or expression;
  *   - Z₀ is a finite positive number.
  */
 import { type Complex, DEFAULT_Z0, assertComplex, assertReferenceImpedance } from '../core';
+import { type ExpressionDef, type SliderSpec, assertSlider, createExpressionDef } from '../expressions';
 import { type DerivedPoint, dependentsOf, findDerived, pointExists, resolveGamma, transformTowards } from './derived';
 import { clampToDisc } from './disc';
 
@@ -35,6 +41,8 @@ export interface WorkspaceState {
   readonly points: readonly WorkspacePoint[];
   /** Points derived from others by a transformation. */
   readonly derived: readonly DerivedPoint[];
+  /** Expressions, in panel order. */
+  readonly expressions: readonly ExpressionDef[];
   readonly selectedId: string | null;
   readonly z0: number;
   /** Next number used for default names (P1, P2, …). Never reused. */
@@ -55,6 +63,12 @@ export type WorkspaceAction =
       readonly name?: string;
     }
   | { readonly type: 'line/set-length'; readonly id: string; readonly length: number }
+  | { readonly type: 'expression/add'; readonly id: string; readonly text?: string; readonly afterId?: string | null }
+  | { readonly type: 'expression/set-text'; readonly id: string; readonly text: string }
+  | { readonly type: 'expression/remove'; readonly id: string }
+  | { readonly type: 'expression/set-enabled'; readonly id: string; readonly enabled: boolean }
+  | { readonly type: 'expression/set-visible'; readonly id: string; readonly visible: boolean }
+  | { readonly type: 'expression/set-slider'; readonly id: string; readonly slider: SliderSpec | null }
   | { readonly type: 'points/clear' }
   | { readonly type: 'z0/set'; readonly z0: number };
 
@@ -62,7 +76,7 @@ export const MAX_NAME_LENGTH = 40;
 
 export function createWorkspace(z0: number = DEFAULT_Z0): WorkspaceState {
   assertReferenceImpedance(z0);
-  return { points: [], derived: [], selectedId: null, z0, nextNumber: 1 };
+  return { points: [], derived: [], expressions: [], selectedId: null, z0, nextNumber: 1 };
 }
 
 function normalizeName(name: string): string {
@@ -73,7 +87,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
   switch (action.type) {
     case 'point/create': {
       assertComplex(action.gamma, 'reflection coefficient');
-      if (pointExists(state, action.id)) {
+      if (idInUse(state, action.id)) {
         throw new Error(`Duplicate point id "${action.id}"`);
       }
       const name = normalizeName(action.name ?? '') || `P${state.nextNumber}`;
@@ -94,7 +108,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return changed ? { ...state, points } : state;
     }
     case 'point/select': {
-      if (action.id !== null && !pointExists(state, action.id)) return state;
+      if (action.id !== null && !pointExists(state, action.id) && !expressionExists(state, action.id)) return state;
       return state.selectedId === action.id ? state : { ...state, selectedId: action.id };
     }
     case 'point/rename': {
@@ -119,7 +133,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case 'line/add': {
       assertLength(action.length);
-      if (pointExists(state, action.id)) throw new Error(`Duplicate point id "${action.id}"`);
+      if (idInUse(state, action.id)) throw new Error(`Duplicate point id "${action.id}"`);
       if (!pointExists(state, action.sourceId)) throw new Error(`Unknown source point "${action.sourceId}"`);
       const sourceName = state.points.find((p) => p.id === action.sourceId)?.name ?? findDerived(state, action.sourceId)?.name;
       const point: DerivedPoint = {
@@ -136,8 +150,38 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       if (!target || target.transform.type !== 'line' || target.transform.length === action.length) return state;
       return replaceDerived(state, { ...target, transform: { type: 'line', length: action.length } });
     }
-    case 'points/clear':
-      return { ...state, points: [], derived: [], selectedId: null };
+    case 'points/clear': {
+      // Clears plotted and derived points only; expressions are kept.
+      const keepSelection = state.selectedId !== null && expressionExists(state, state.selectedId);
+      return { ...state, points: [], derived: [], selectedId: keepSelection ? state.selectedId : null };
+    }
+    case 'expression/add': {
+      if (idInUse(state, action.id)) throw new Error(`Duplicate id "${action.id}"`);
+      const def = createExpressionDef(action.id, action.text ?? '');
+      const after = action.afterId ? state.expressions.findIndex((e) => e.id === action.afterId) : -1;
+      const expressions =
+        after < 0
+          ? [...state.expressions, def]
+          : [...state.expressions.slice(0, after + 1), def, ...state.expressions.slice(after + 1)];
+      return { ...state, expressions };
+    }
+    case 'expression/set-text':
+      return updateExpression(state, action.id, (e) => (e.text === action.text ? e : { ...e, text: action.text }));
+    case 'expression/set-enabled':
+      return updateExpression(state, action.id, (e) => (e.enabled === action.enabled ? e : { ...e, enabled: action.enabled }));
+    case 'expression/set-visible':
+      return updateExpression(state, action.id, (e) => (e.visible === action.visible ? e : { ...e, visible: action.visible }));
+    case 'expression/set-slider':
+      if (action.slider) assertSlider(action.slider);
+      return updateExpression(state, action.id, (e) => ({ ...e, slider: action.slider }));
+    case 'expression/remove': {
+      if (!expressionExists(state, action.id)) return state;
+      return {
+        ...state,
+        expressions: state.expressions.filter((e) => e.id !== action.id),
+        selectedId: state.selectedId === action.id ? null : state.selectedId,
+      };
+    }
     case 'z0/set':
       assertReferenceImpedance(action.z0);
       return { ...state, z0: action.z0 };
@@ -153,6 +197,25 @@ function assertLength(length: number): void {
   if (typeof length !== 'number' || !Number.isFinite(length)) {
     throw new RangeError(`Line length must be a finite number of wavelengths (got ${String(length)})`);
   }
+}
+
+export function expressionExists(state: WorkspaceState, id: string): boolean {
+  return state.expressions.some((e) => e.id === id);
+}
+
+function idInUse(state: WorkspaceState, id: string): boolean {
+  return pointExists(state, id) || expressionExists(state, id);
+}
+
+function updateExpression(state: WorkspaceState, id: string, fn: (e: ExpressionDef) => ExpressionDef): WorkspaceState {
+  let changed = false;
+  const expressions = state.expressions.map((e) => {
+    if (e.id !== id) return e;
+    const next = fn(e);
+    if (next !== e) changed = true;
+    return next;
+  });
+  return changed ? { ...state, expressions } : state;
 }
 
 function replaceDerived(state: WorkspaceState, next: DerivedPoint): WorkspaceState {

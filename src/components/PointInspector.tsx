@@ -10,7 +10,8 @@ interface PointInspectorProps {
   readonly quantitiesHeading: string;
   /** Extra rows appended to the quantities list. */
   readonly extraRows?: readonly (readonly [string, string, string?])[];
-  readonly onRename: (name: string) => void;
+  /** When omitted the name is shown read-only. */
+  readonly onRename?: (name: string) => void;
   /** When given, a Delete button is shown in the header. */
   readonly onDelete?: () => void;
   readonly deleteTitle?: string;
@@ -89,13 +90,18 @@ export function PointInspector(props: PointInspectorProps) {
   const kind = KIND_LABEL[q.kind];
   const derived = point.role === 'derived';
   const subscript = derived ? 'ᵢₙ' : '';
+  const swatch = derived ? 'selected-swatch diamond' : point.role === 'expression' ? 'selected-swatch square' : 'selected-swatch';
   const rows = [...quantityRows(q, z0, subscript), ...(props.extraRows ?? [])];
 
   return (
-    <section className={derived ? 'inspector derived' : 'inspector'} aria-label={`Properties of ${point.name}`}>
+    <section className={`inspector ${point.role}`} aria-label={`Properties of ${point.name}`}>
       <div className="inspector-head">
-        <span className={derived ? 'selected-swatch diamond' : 'selected-swatch'} aria-hidden="true" />
-        <NameField name={point.name} onRename={props.onRename} />
+        <span className={swatch} aria-hidden="true" />
+        {props.onRename ? (
+          <NameField name={point.name} onRename={props.onRename} />
+        ) : (
+          <span className="name-static">{point.name}</span>
+        )}
         {props.onDelete && (
           <button type="button" className="danger" onClick={props.onDelete} title={props.deleteTitle}>
             Delete

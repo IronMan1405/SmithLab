@@ -14,6 +14,7 @@ import {
   isInfinite,
   isNaNComplex,
   mul,
+  neg,
   reciprocal,
   sub,
 } from '../src/core';
@@ -53,6 +54,11 @@ describe('complex arithmetic', () => {
   it('defines arg(0) = 0, including signed zeros', () => {
     expect(arg(ZERO)).toBe(0);
     expect(arg(complex(-0, -0))).toBe(0);
+  });
+
+  it('negation never produces signed zeros', () => {
+    expect(Object.is(neg(complex(1, 0)).im, 0)).toBe(true);
+    expect(arg(neg(complex(1, 0)))).toBe(Math.PI);
   });
 
   it('computes reciprocals', () => {

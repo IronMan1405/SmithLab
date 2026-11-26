@@ -3,7 +3,8 @@ import { SmithChart } from './chart/SmithChart';
 import { DEFAULT_VIEW, type View, pixelsPerSvgUnit, zoomAbout } from './chart/viewport';
 import { HoverStatus } from './components/HoverStatus';
 import { PointList } from './components/PointList';
-import { NEW_LINE_LENGTH, SelectionPanel } from './components/SelectionPanel';
+import { ExpressionPanel } from './components/ExpressionPanel';
+import { type ExpressionInfo, NEW_LINE_LENGTH, SelectionPanel } from './components/SelectionPanel';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { ViewControls } from './components/ViewControls';
 import { Z0Control } from './components/Z0Control';
@@ -13,6 +14,14 @@ import { useChartInteraction } from './interaction/useChartInteraction';
 import { useElementSize } from './interaction/useElementSize';
 import { useKeyboardShortcuts } from './interaction/useKeyboardShortcuts';
 import type { LineVisual } from './chart/TransmissionLineLayer';
+import {
+  type EvaluationOutput,
+  TYPE_INFO,
+  evaluateExpressions,
+  plottedGamma,
+  withSliderValue,
+} from './expressions';
+import type { ResolvedPoint } from './workspace';
 import {
   createPointId,
   createWorkspace,
@@ -29,6 +38,8 @@ export function App() {
   const [showImpedanceGrid, setShowImpedanceGrid] = useState(true);
   const [showAdmittanceGrid, setShowAdmittanceGrid] = useState(false);
   const [showWavelengthScales, setShowWavelengthScales] = useState(true);
+  const [showExpressions, setShowExpressions] = useState(true);
+  const [focusExpressionId, setFocusExpressionId] = useState<string | null>(null);
 
   const [workspace, dispatch] = useReducer(workspaceReducer, undefined, () => createWorkspace());
   const [view, setView] = useState<View>(DEFAULT_VIEW);
@@ -39,10 +50,44 @@ export function App() {
 
   // Every point with its current Γ; derived points are recomputed from their sources.
   const resolved = useMemo(() => resolvePoints(workspace), [workspace]);
+
+  // Expressions: re-evaluated reactively. The previous output is passed back
+  // in so unchanged expressions (and everything that depends only on them)
+  // are reused rather than recomputed.
+  const evaluationCache = useRef<EvaluationOutput | null>(null);
+  const evaluation = useMemo(() => {
+    const output = evaluateExpressions(workspace.expressions, workspace.z0, evaluationCache.current);
+    evaluationCache.current = output;
+    return output;
+  }, [workspace.expressions, workspace.z0]);
+
+  const expressionPoints = useMemo<ResolvedPoint[]>(() => {
+    const result: ResolvedPoint[] = [];
+    for (const def of workspace.expressions) {
+      const r = evaluation.results.get(def.id);
+      const gamma = plottedGamma(r);
+      if (!def.visible || !gamma || !r) continue;
+      result.push({ id: def.id, name: r.name ?? def.text, role: 'expression', gamma, sourceId: null, transform: null });
+    }
+    return result;
+  }, [workspace.expressions, evaluation]);
+
+  /** Everything drawn on (and hit-testable in) the chart. */
+  const chartPoints = useMemo(() => [...resolved, ...expressionPoints], [resolved, expressionPoints]);
+
   const selected = useMemo(
-    () => (workspace.selectedId ? resolvePoint(workspace, workspace.selectedId) : null),
-    [workspace],
+    () =>
+      workspace.selectedId
+        ? (resolvePoint(workspace, workspace.selectedId) ?? expressionPoints.find((p) => p.id === workspace.selectedId) ?? null)
+        : null,
+    [workspace, expressionPoints],
   );
+  const selectedExpression = useMemo<ExpressionInfo | null>(() => {
+    if (selected?.role !== 'expression') return null;
+    const def = workspace.expressions.find((e) => e.id === selected.id);
+    const value = evaluation.results.get(selected.id)?.value;
+    return def && value ? { text: def.text, typeLabel: TYPE_INFO[value.type].label } : null;
+  }, [selected, workspace.expressions, evaluation]);
   const quantities = useMemo(
     () => (selected ? pointQuantities(selected.gamma, workspace.z0) : null),
     [selected, workspace.z0],
@@ -87,10 +132,39 @@ export function App() {
     }
   }, []);
 
-  const interaction = useChartInteraction({ svgRef, view, points: resolved, onCommand: applyCommand });
+  const interaction = useChartInteraction({ svgRef, view, points: chartPoints, onCommand: applyCommand });
   useKeyboardShortcuts({ selected, view }, applyCommand);
 
   const focusPoint = useCallback((id: string) => dispatch({ type: 'point/select', id }), []);
+
+  const addExpression = useCallback((afterId: string | null, text = '') => {
+    const id = createPointId();
+    dispatch({ type: 'expression/add', id, text, afterId });
+    setFocusExpressionId(id);
+    return id;
+  }, []);
+
+  const insertExample = useCallback(() => {
+    const ids = EXAMPLE.map(({ text }) => {
+      const id = createPointId();
+      dispatch({ type: 'expression/add', id, text });
+      return id;
+    });
+    EXAMPLE.forEach((line, i) => {
+      if (line.hidden) dispatch({ type: 'expression/set-visible', id: ids[i]!, visible: false });
+      if (line.slider) dispatch({ type: 'expression/set-slider', id: ids[i]!, slider: line.slider });
+    });
+  }, []);
+
+  const setSliderValue = useCallback(
+    (id: string, value: number) => {
+      const def = workspace.expressions.find((e) => e.id === id);
+      if (!def?.slider) return;
+      const text = withSliderValue(def.text, value, def.slider.step);
+      if (text) dispatch({ type: 'expression/set-text', id, text });
+    },
+    [workspace.expressions],
+  );
   const showHover = interaction.gestureKind === 'idle' ? interaction.hover : null;
 
   return (
@@ -109,6 +183,10 @@ export function App() {
             <span className="swatch swatch-y" /> Admittance grid
           </label>
           <label className="toggle">
+            <input type="checkbox" checked={showExpressions} onChange={(e) => setShowExpressions(e.target.checked)} />
+            Expressions
+          </label>
+          <label className="toggle">
             <input
               type="checkbox"
               checked={showWavelengthScales}
@@ -122,6 +200,26 @@ export function App() {
       </header>
 
       <main className="stage">
+        {showExpressions && (
+          <aside className="expressions-sidebar">
+            <ExpressionPanel
+              expressions={workspace.expressions}
+              evaluation={evaluation}
+              selectedId={workspace.selectedId}
+              focusId={focusExpressionId}
+              onAdd={(afterId) => addExpression(afterId)}
+              onChangeText={(id, text) => dispatch({ type: 'expression/set-text', id, text })}
+              onRemove={(id) => dispatch({ type: 'expression/remove', id })}
+              onSetEnabled={(id, enabled) => dispatch({ type: 'expression/set-enabled', id, enabled })}
+              onSetVisible={(id, visible) => dispatch({ type: 'expression/set-visible', id, visible })}
+              onSetSlider={(id, slider) => dispatch({ type: 'expression/set-slider', id, slider })}
+              onSliderValue={setSliderValue}
+              onSelect={focusPoint}
+              onInsertExample={insertExample}
+              onFocusHandled={() => setFocusExpressionId(null)}
+            />
+          </aside>
+        )}
         <div className="chart-frame">
           <SmithChart
             ref={svgRef}
@@ -130,7 +228,7 @@ export function App() {
             showImpedanceGrid={showImpedanceGrid}
             showAdmittanceGrid={showAdmittanceGrid}
             showWavelengthScales={showWavelengthScales}
-            points={resolved}
+            points={chartPoints}
             lines={lines}
             selectedId={workspace.selectedId}
             selection={quantities}
@@ -139,7 +237,7 @@ export function App() {
             onFocusPoint={focusPoint}
             pointerHandlers={interaction.handlers}
           />
-          {workspace.points.length === 0 && (
+          {workspace.points.length === 0 && workspace.expressions.length === 0 && (
             <p className="chart-hint">Click inside the chart to place an impedance point. Drag to pan, scroll to zoom.</p>
           )}
           <HoverStatus gamma={showHover} />
@@ -157,6 +255,11 @@ export function App() {
               key={selected.id}
               workspace={workspace}
               selected={selected}
+              expression={selectedExpression}
+              onEditExpression={(id) => {
+                setShowExpressions(true);
+                setFocusExpressionId(id);
+              }}
               onSelect={focusPoint}
               onRename={(id, name) => dispatch({ type: 'point/rename', id, name })}
               onDelete={(id) => dispatch({ type: 'point/delete', id })}
@@ -203,3 +306,12 @@ export function App() {
     </div>
   );
 }
+
+/** Example from the Milestone 3B brief: a load seen through a line whose length is a slider. */
+const EXAMPLE: readonly { text: string; hidden?: boolean; slider?: { min: number; max: number; step: number } }[] = [
+  { text: 'zL = 0.5 + j1.2' },
+  { text: 'yL = 1/zL' },
+  { text: 'gammaL = (zL - 1)/(zL + 1)', hidden: true },
+  { text: 'l = 0.125', slider: { min: 0, max: 0.5, step: 0.001 } },
+  { text: 'gammaIn = gammaL * exp(-j*4*pi*l)' },
+];

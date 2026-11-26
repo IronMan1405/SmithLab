@@ -11,7 +11,8 @@
 }
 
 .smith-chart path,
-.smith-chart circle {
+.smith-chart circle,
+.smith-chart rect {
   fill: none;
   vector-effect: non-scaling-stroke;
   stroke-linecap: round;
@@ -216,4 +217,24 @@
 }
 .scale-title.load {
   fill: var(--scale-load);
+}
+
+/* Expression-defined points */
+.point.expression .point-dot {
+  fill: var(--expr) !important;
+  stroke: var(--chart-disc);
+  stroke-width: 1.5px;
+}
+.point.expression.selected .point-dot {
+  fill: var(--accent) !important;
+}
+.point.expression .point-label {
+  fill: var(--expr-label);
+  font-family: var(--font-mono);
+}
+.point.expression.selected .point-label {
+  fill: var(--accent);
+}
+.point.expression {
+  cursor: pointer;
 }

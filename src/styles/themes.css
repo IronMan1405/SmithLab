@@ -50,6 +50,10 @@
   --scale-tick: #a8a196;
   --scale-generator: #34312c;
   --scale-load: #8a8478;
+  --expr: #0f766e;
+  --expr-label: #0d5f58;
+  --expr-bg: rgba(15, 118, 110, 0.07);
+  --error: #b42318;
   --control-active: #22211e;
   --control-active-text: #fdfcf9;
 }
@@ -86,6 +90,10 @@
   --scale-tick: #56616d;
   --scale-generator: #c9d1d9;
   --scale-load: #7d8794;
+  --expr: #5eead4;
+  --expr-label: #99f6e4;
+  --expr-bg: rgba(94, 234, 212, 0.07);
+  --error: #f97066;
   --control-active: #d8dde3;
   --control-active-text: #0f1114;
 }

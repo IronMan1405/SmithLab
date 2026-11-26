@@ -48,23 +48,25 @@ export function commandForKey(input: KeyInput, ctx: KeyContext): KeyCommand | nu
   const { selected, view } = ctx;
 
   const arrow = ARROWS[key];
+  // Expression points are defined by their expression text: edit it in the panel.
+  const editable = selected && selected.role !== 'expression' ? selected : null;
   if (arrow) {
-    if (!selected) return null;
-    if (selected.transform?.type === 'line') {
+    if (!editable) return null;
+    if (editable.transform?.type === 'line') {
       const sign = key === 'ArrowRight' || key === 'ArrowUp' ? 1 : -1;
-      const length = selected.transform.length + sign * LENGTH_STEP * (input.shiftKey ? 10 : 1);
+      const length = editable.transform.length + sign * LENGTH_STEP * (input.shiftKey ? 10 : 1);
       // Round to the step grid so repeated presses don't accumulate float noise.
-      return { type: 'line-length', id: selected.id, length: Math.round(length / LENGTH_STEP) / (1 / LENGTH_STEP) };
+      return { type: 'line-length', id: editable.id, length: Math.round(length / LENGTH_STEP) / (1 / LENGTH_STEP) };
     }
     const step = (NUDGE_STEP * (input.shiftKey ? 10 : 1)) / view.zoom;
-    const gamma = clampToDisc(add(selected.gamma, complex(arrow.re * step, arrow.im * step)));
-    return { type: 'move', id: selected.id, gamma };
+    const gamma = clampToDisc(add(editable.gamma, complex(arrow.re * step, arrow.im * step)));
+    return { type: 'move', id: editable.id, gamma };
   }
 
   switch (key) {
     case 'Delete':
     case 'Backspace':
-      return selected ? { type: 'delete', id: selected.id } : null;
+      return editable ? { type: 'delete', id: editable.id } : null;
     case 'Escape':
       return selected ? { type: 'deselect' } : null;
     case '+':

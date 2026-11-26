@@ -3,7 +3,20 @@
 An interactive, freeform Smith Chart workspace. SmithLab aims to be a
 mathematical instrument rather than a form-based impedance calculator.
 
-**Status: Milestone 3A — transmission-line explorer.** You can select a
+**Status: Milestone 3B — expression engine.** Smith Chart constructions can
+now be written as mathematical relationships, for example:
+
+```
+zL = 0.5 + j1.2
+gammaL = (zL - 1)/(zL + 1)
+l = 0.125                      ← attach a slider
+gammaIn = gammaL * exp(-j*4*pi*l)
+```
+
+Moving the slider re-evaluates everything that depends on `l` and moves the
+plotted point. The full language is described under *Expressions*, below.
+
+Previously, in Milestone 3A (transmission-line explorer): You can select a
 load, add a lossless transmission line, and drag its electrical length to watch
 the input impedance move around the constant-VSWR circle. Wavelength scales
 around the chart show the same movement.
@@ -56,7 +69,16 @@ src/
 │   ├── labels.ts             Label anchors and directions in the Γ-plane
 │   └── index.ts
 │
-├── workspace/     Workspace state. Pure TS; depends only on core.
+├── expressions/   Expression language. Pure TS; depends only on core.
+│   ├── lexer.ts, parser.ts, ast.ts   Tokens → AST (recursive descent, no eval)
+│   ├── types.ts          Typed values and operator type rules, naming convention
+│   ├── functions.ts      Built-in function registry (math + RF)
+│   ├── evaluator.ts      AST → typed value using core arithmetic
+│   ├── engine.ts         Name binding, dependency graph, cycles, incremental eval
+│   ├── plot.ts           Typed value → Γ chart position
+│   └── definitions.ts    Stored expression record; slider helpers
+│
+├── workspace/     Workspace state. Pure TS; depends on core and expressions.
 │   ├── workspace.ts      Reducer: points {id, name, Γ}, derived points, selection, Z₀
 │   ├── derived.ts        Derived points {id, sourceId, transform}; Γ resolution
 │   ├── quantities.ts     z, Z, Γ, |Γ|, ∠Γ, VSWR, RL, y for a point (+ load kind)
@@ -323,6 +345,106 @@ name can be edited inline. Special cases:
 - `PointTransform` is a tagged union, so adding series/shunt elements means adding a new case rather than changing the model.
 - Dragging a derived point is handled by the same `point/move` command as any other point. For a derived point, the reducer changes its transform parameter instead of storing a position.
 
+### Expressions (Milestone 3B)
+
+The left panel holds a list of expressions.
+- **Adding rows:** **+ Add** creates an empty row, and Enter inside a row adds a new one below it.
+- **Errors:** each result or error appears under its row. A bad row never stops the others from evaluating.
+- **Row controls:**
+  - The square in the gutter shows or hides a plottable result.
+  - The checkbox enables or disables the row.
+  - ⇿ attaches a slider (only for `name = number`).
+  - × deletes the row.
+- **Selection:** focusing a row selects its plotted point. Clicking a plotted point (■) selects its row, and the inspector shows the value along with the expression that defines it.
+- **Example:** **Insert an example** adds the example shown at the top of this README.
+
+**Syntax**
+
+| Form | Example |
+|------|---------|
+| Assignment / bare expression | `zL = 0.5 + j1.2`, `vswr(zL)` |
+| Numbers | `2`, `0.5`, `.5`, `1e-3` |
+| Imaginary literals | `j1.2`, `1.2j`; `j` alone is the imaginary unit |
+| Operators | `+ - * / ^` (with `^` right-associative), unary `-`, and parentheses |
+| Constants | `pi` (or `π`), `j` |
+| Functions | `exp ln sqrt sin cos tan deg rad re im abs arg conj polar(r, θ)` |
+| RF functions | `z(x) y(x) gamma(x) Z(x) len(x) vswr(x) rl(x) line(x, l)` |
+
+- There is no implicit multiplication: write `2*pi`, not `2pi`.
+- Names consist of letters (Greek included), digits and `_`. A name can't be `j` followed by digits, because that is an imaginary literal.
+- Unicode `−`, `×`, `·` and `÷` are accepted, so results can be pasted back in.
+- Parsing is a hand-written recursive-descent parser with no `eval` or `Function`.
+
+**Types.** Every value has one of these types:
+
+| Type | Meaning | Chip |
+|------|---------|------|
+| `real` | plain real number | ℝ |
+| `complex` | plain complex number | ℂ |
+| `impedance` | normalized z | z |
+| `admittance` | normalized y | y |
+| `reflection` | Γ | Γ |
+| `physicalImpedance` | Z in Ω | Ω |
+| `length` | electrical length in λ | λ |
+
+A value gets its type in one of three ways:
+
+1. **Conversion functions** convert between types: `gamma(zL)` computes Γ from z, `z(ZL)` normalizes with the workspace Z₀, and `y(zL)` = 1/z. Applied to a plain number they *declare* it, so `z(1 + j)` is an impedance.
+2. **Operator rules:**
+
+   | Expression | Result |
+   |---|---|
+   | `z ± z`, `z ± number` | impedance |
+   | `number / z` | admittance (and vice versa) |
+   | `z / z` | plain complex |
+   | `Γ × number` (e.g. a phasor) | Γ |
+   | `l × real` | length |
+   | `l × complex` | plain complex |
+
+   These combinations are errors:
+   - adding an impedance and an admittance;
+   - a plain number added to an Ω quantity;
+   - a complex number added to a length;
+   - a typed value inside `exp()`;
+   - a typed exponent.
+3. **The naming convention.** When a *plain* value is assigned to a name with one of these prefixes, the name declares its type:
+
+   | Prefix | Type |
+   |---|---|
+   | `z` | impedance |
+   | `y` | admittance |
+   | `Z` | physical impedance (Ω) |
+   | `gamma` or `Γ` | reflection coefficient |
+   | `l` | length |
+
+   - The prefix must be followed by the end of the name, an uppercase letter, a digit or `_`. So `zL`, `z1` and `z_in` count, but `zeta` and `zin` do not.
+   - A name that contradicts an already-typed value is an error that suggests the right conversion. For example, `gammaX = zL` says to use `gamma(…)`.
+   - This is a deliberate convenience, so the textbook forms work exactly as written.
+
+**Plotting.**
+- Impedances, admittances, Γ and physical impedances are converted to Γ and plotted as teal squares. Physical impedances use the workspace Z₀, and their points move when Z₀ changes.
+- Plain complex numbers are not plotted. Their row says to wrap them in `z()`, `y()` or `gamma()`.
+- Values outside the chart (|Γ| > 1) are reported in the row rather than drawn.
+- Coincident points (zL and yL = 1/zL are the same load) get stacked labels.
+
+**Dependencies and re-evaluation.**
+- **Naming:** each `name = …` defines a name. A name defined twice is an error on both rows, and `pi`, `π` and `j` can't be redefined.
+- **Errors:** cycles are detected and reported with their path (`a → b → a`). Undefined names, references to disabled rows, and dependencies that have errors are each reported on the dependent row.
+- **Deletion:** deleting an expression turns its dependents into "not defined" errors, which clear as soon as the name is defined again.
+- **Order:** evaluation follows a deterministic topological order, independent of list order.
+- **Incremental:** the previous evaluation is reused. An expression is re-evaluated only when its text, its enabled state, a name binding, a dependency's result or (for expressions that use Z₀) Z₀ has changed. The tests check exactly which expressions are recomputed.
+
+**Sliders.**
+- A slider can be attached to `name = number`. Lengths default to 0–0.5 step 0.001; other values get a sensible range that contains them.
+- Min, max and step are editable.
+- Moving the slider *rewrites the number in the expression text*, so the text remains the only copy of the value.
+- If the expression is edited into something other than a number, the slider pauses until it is a plain number again.
+
+**Integration boundary.**
+- Expressions live in workspace state as text records, and everything else about them is derived.
+- Manually placed points and transmission-line points are unchanged and independent of expressions.
+- An expression point can be selected and inspected, but it can't be dragged, deleted from the chart, or used as the source of a UI transmission line. Use `line(x, l)` in an expression instead.
+
 ### Characteristic impedance
 
 The Z₀ field in the toolbar applies valid positive values immediately. Invalid
@@ -334,6 +456,10 @@ normalised z is unchanged and its physical Z = z·Z₀ is re-derived.
 
 ## Known limitations
 
+- **Expression points are read-only on the chart.** Dragging one does not edit its expression; that needs an inverse "drag → literal" mapping, planned for later.
+- **Real-valued sliders only.** Sliders require the form `name = number`, so complex values can't be slider-driven directly. Use two real sliders, e.g. `zL = r + j*x`.
+- **No persistence.** Expressions, like points, are lost on reload.
+- **Expression points can't be the source of a UI transmission line.** Use `line()` in an expression instead.
 - **Lossless lines with Z₀(line) = Z₀(system) only.** Lossy lines and lines with a different characteristic impedance are not modelled.
 - **Overlapping points.** When a line input sits exactly on its load (length 0 or a multiple of λ/2), the input is drawn on top. Select the load from the point list or its inspector link.
 - **Slider resolution.** The slider steps in 0.001λ. Use the numeric field for finer values.

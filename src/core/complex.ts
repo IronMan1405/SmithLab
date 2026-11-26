@@ -123,7 +123,9 @@ export function add(a: Complex, b: Complex): Complex {
 export function neg(a: Complex): Complex {
   if (isNaNComplex(a)) return COMPLEX_NAN;
   if (isInfinite(a)) return COMPLEX_INFINITY;
-  return complex(-a.re, -a.im);
+  // `+ 0` turns −0 into +0, so negating a real number doesn't flip arg() of
+  // the result across the branch cut (e.g. −(1 + j0) must have arg π, not −π).
+  return complex(-a.re + 0, -a.im + 0);
 }
 
 export function sub(a: Complex, b: Complex): Complex {

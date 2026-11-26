@@ -37,7 +37,8 @@ export interface DerivedPoint {
   readonly transform: PointTransform;
 }
 
-export type PointRole = 'source' | 'derived';
+/** `expression`: a point plotted from an expression result (see src/expressions). */
+export type PointRole = 'source' | 'derived' | 'expression';
 
 /** A point of either kind with its Γ resolved — what renderers and inspectors consume. */
 export interface ResolvedPoint {

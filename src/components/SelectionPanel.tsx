@@ -13,9 +13,17 @@ import { wavelengthsTowardGenerator } from '../geometry';
 /** Default length for a newly added line: λ/8, so the input point is visibly separate. */
 export const NEW_LINE_LENGTH = 0.125;
 
+/** Details of the expression behind a selected expression point. */
+export interface ExpressionInfo {
+  readonly text: string;
+  readonly typeLabel: string;
+}
+
 interface SelectionPanelProps {
   readonly workspace: WorkspaceState;
   readonly selected: ResolvedPoint;
+  readonly expression: ExpressionInfo | null;
+  readonly onEditExpression: (id: string) => void;
   readonly onSelect: (id: string) => void;
   readonly onRename: (id: string, name: string) => void;
   readonly onDelete: (id: string) => void;
@@ -29,8 +37,25 @@ function wtg(point: ResolvedPoint): string {
 }
 
 /** Contextual property panel for the selected point (plotted load or line input). */
-export function SelectionPanel({ workspace, selected, ...actions }: SelectionPanelProps) {
+export function SelectionPanel({ workspace, selected, expression, ...actions }: SelectionPanelProps) {
   const quantities = pointQuantities(selected.gamma, workspace.z0);
+
+  if (selected.role === 'expression') {
+    return (
+      <PointInspector point={selected} quantities={quantities} z0={workspace.z0} quantitiesHeading="Plotted value">
+        {expression && (
+          <div className="defined-by">
+            <span className="defined-by-label">Defined by expression · {expression.typeLabel}</span>
+            <code>{expression.text}</code>
+            <button type="button" className="link expr-link" onClick={() => actions.onEditExpression(selected.id)}>
+              Edit in expression panel
+            </button>
+          </div>
+        )}
+      </PointInspector>
+    );
+  }
+
   const lines = resolvePoints(workspace).filter((p) => p.sourceId === selected.id);
 
   if (selected.role === 'source') {
