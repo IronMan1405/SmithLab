@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import type { CurveVisual } from './chart/CurvesLayer';
+import { type CurveIntersections, CurveInspector } from './components/CurveInspector';
 import { SmithChart } from './chart/SmithChart';
 import { DEFAULT_VIEW, type View, pixelsPerSvgUnit, zoomAbout } from './chart/viewport';
 import { HoverStatus } from './components/HoverStatus';
@@ -15,12 +17,17 @@ import { useElementSize } from './interaction/useElementSize';
 import { useKeyboardShortcuts } from './interaction/useKeyboardShortcuts';
 import type { LineVisual } from './chart/TransmissionLineLayer';
 import {
+  CURVE_COLORS,
+  type CurveColor,
   type EvaluationOutput,
   TYPE_INFO,
   evaluateExpressions,
+  isDraggableExpression,
   plottedGamma,
+  rewriteForDrag,
   withSliderValue,
 } from './expressions';
+import { intersectCurves } from './geometry';
 import type { ResolvedPoint } from './workspace';
 import {
   createPointId,
@@ -67,10 +74,86 @@ export function App() {
       const r = evaluation.results.get(def.id);
       const gamma = plottedGamma(r);
       if (!def.visible || !gamma || !r) continue;
-      result.push({ id: def.id, name: r.name ?? def.text, role: 'expression', gamma, sourceId: null, transform: null });
+      result.push({
+        id: def.id,
+        name: r.name ?? def.text,
+        role: 'expression',
+        gamma,
+        sourceId: null,
+        transform: null,
+        draggable: isDraggableExpression(def, r),
+      });
     }
     return result;
   }, [workspace.expressions, evaluation]);
+
+  // Curves: colour is the expression's own choice or a palette colour by order.
+  const curveColors = useMemo(() => {
+    const colors = new Map<string, CurveColor>();
+    let i = 0;
+    for (const def of workspace.expressions) {
+      if (!evaluation.results.get(def.id)?.curve) continue;
+      colors.set(def.id, def.color ?? CURVE_COLORS[i % CURVE_COLORS.length]!);
+      i++;
+    }
+    return colors;
+  }, [workspace.expressions, evaluation]);
+
+  const curveVisuals = useMemo<CurveVisual[]>(() => {
+    const result: CurveVisual[] = [];
+    for (const def of workspace.expressions) {
+      const curve = evaluation.results.get(def.id)?.curve;
+      if (!curve || !def.visible) continue;
+      result.push({ id: def.id, curve, color: curveColors.get(def.id) ?? 'teal', selected: workspace.selectedId === def.id });
+    }
+    return result;
+  }, [workspace.expressions, workspace.selectedId, evaluation, curveColors]);
+
+  const draggableIds = useMemo(
+    () => new Set(expressionPoints.filter((p) => p.draggable).map((p) => p.id)),
+    [expressionPoints],
+  );
+
+  // --- curve selection and inspection ---------------------------------------------
+  const selectedCurve = useMemo(() => {
+    const id = workspace.selectedId;
+    const def = id ? workspace.expressions.find((e) => e.id === id) : undefined;
+    const result = id ? evaluation.results.get(id) : undefined;
+    return def && result?.curve ? { def, result, curve: result.curve } : null;
+  }, [workspace.selectedId, workspace.expressions, evaluation]);
+
+  const [probe, setProbe] = useState<{ id: string; t: number } | null>(null);
+  const [activeIntersection, setActiveIntersection] = useState<string | null>(null);
+  useEffect(() => setActiveIntersection(null), [selectedCurve?.def.id]);
+  const probeT = selectedCurve
+    ? probe?.id === selectedCurve.def.id
+      ? Math.min(selectedCurve.curve.parameter.max, Math.max(selectedCurve.curve.parameter.min, probe.t))
+      : (selectedCurve.curve.parameter.min + selectedCurve.curve.parameter.max) / 2
+    : 0;
+  const probeGamma = selectedCurve ? selectedCurve.curve.point(probeT) : null;
+
+  const curveIntersections = useMemo<CurveIntersections[]>(() => {
+    if (!selectedCurve) return [];
+    return curveVisuals
+      .filter((c) => c.id !== selectedCurve.def.id)
+      .map((c) => ({
+        otherId: c.id,
+        otherName: evaluation.results.get(c.id)?.name ?? null,
+        result: intersectCurves(selectedCurve.curve, c.curve),
+      }));
+  }, [selectedCurve, curveVisuals, evaluation]);
+
+  const intersectionMarks = useMemo(
+    () =>
+      curveIntersections.flatMap(({ otherId, result }) =>
+        result.points.map((p, i) => ({ gamma: p.gamma, active: activeIntersection === `${otherId}#${i}` })),
+      ),
+    [curveIntersections, activeIntersection],
+  );
+
+  // Latest state for the (stable) command handler.
+  const latest = useRef({ workspace, evaluation });
+  latest.current = { workspace, evaluation };
 
   /** Everything drawn on (and hit-testable in) the chart. */
   const chartPoints = useMemo(() => [...resolved, ...expressionPoints], [resolved, expressionPoints]);
@@ -86,7 +169,9 @@ export function App() {
     if (selected?.role !== 'expression') return null;
     const def = workspace.expressions.find((e) => e.id === selected.id);
     const value = evaluation.results.get(selected.id)?.value;
-    return def && value ? { text: def.text, typeLabel: TYPE_INFO[value.type].label } : null;
+    return def && value
+      ? { text: def.text, typeLabel: TYPE_INFO[value.type].label, draggable: selected.draggable === true }
+      : null;
   }, [selected, workspace.expressions, evaluation]);
   const quantities = useMemo(
     () => (selected ? pointQuantities(selected.gamma, workspace.z0) : null),
@@ -117,9 +202,18 @@ export function App() {
       case 'deselect':
         dispatch({ type: 'point/select', id: null });
         break;
-      case 'move':
-        dispatch({ type: 'point/move', id: command.id, gamma: command.gamma });
+      case 'move': {
+        const { workspace: ws, evaluation: ev } = latest.current;
+        const def = ws.expressions.find((e) => e.id === command.id);
+        if (def) {
+          // Expression point: rewrite its literal (only if it is a literal).
+          const text = rewriteForDrag(def, ev.results.get(def.id), command.gamma, ws.z0);
+          if (text && text !== def.text) dispatch({ type: 'expression/set-text', id: def.id, text });
+        } else {
+          dispatch({ type: 'point/move', id: command.id, gamma: command.gamma });
+        }
         break;
+      }
       case 'delete':
         dispatch({ type: 'point/delete', id: command.id });
         break;
@@ -155,6 +249,27 @@ export function App() {
       if (line.slider) dispatch({ type: 'expression/set-slider', id: ids[i]!, slider: line.slider });
     });
   }, []);
+
+  const insertCurveExample = useCallback(() => {
+    const ids = CURVE_EXAMPLE.map(({ text }) => {
+      const id = createPointId();
+      dispatch({ type: 'expression/add', id, text });
+      return id;
+    });
+    CURVE_EXAMPLE.forEach((line, i) => {
+      if (line.slider) dispatch({ type: 'expression/set-slider', id: ids[i]!, slider: line.slider });
+    });
+  }, []);
+
+  const addIntersectionPoint = useCallback(
+    (curveName: string, otherName: string, index: number) => {
+      const names = new Set([...evaluation.results.values()].map((r) => r.name));
+      let n = 1;
+      while (names.has(`p${n}`)) n++;
+      addExpression(workspace.expressions.at(-1)?.id ?? null, `p${n} = intersect(${curveName}, ${otherName}, ${index})`);
+    },
+    [evaluation, workspace.expressions, addExpression],
+  );
 
   const setSliderValue = useCallback(
     (id: string, value: number) => {
@@ -206,6 +321,8 @@ export function App() {
               expressions={workspace.expressions}
               evaluation={evaluation}
               selectedId={workspace.selectedId}
+              curveColors={curveColors}
+              draggableIds={draggableIds}
               focusId={focusExpressionId}
               onAdd={(afterId) => addExpression(afterId)}
               onChangeText={(id, text) => dispatch({ type: 'expression/set-text', id, text })}
@@ -216,6 +333,7 @@ export function App() {
               onSliderValue={setSliderValue}
               onSelect={focusPoint}
               onInsertExample={insertExample}
+              onInsertCurveExample={insertCurveExample}
               onFocusHandled={() => setFocusExpressionId(null)}
             />
           </aside>
@@ -230,6 +348,9 @@ export function App() {
             showWavelengthScales={showWavelengthScales}
             points={chartPoints}
             lines={lines}
+            curves={curveVisuals}
+            probe={probeGamma}
+            intersections={intersectionMarks}
             selectedId={workspace.selectedId}
             selection={quantities}
             selectionOnLinePath={selectionOnLinePath}
@@ -250,7 +371,28 @@ export function App() {
         </div>
 
         <aside className="sidebar">
-          {selected ? (
+          {selectedCurve ? (
+            <CurveInspector
+              key={selectedCurve.def.id}
+              name={selectedCurve.result.name}
+              text={selectedCurve.def.text}
+              curve={selectedCurve.curve}
+              color={curveColors.get(selectedCurve.def.id) ?? 'teal'}
+              onColor={(color) => dispatch({ type: 'expression/set-color', id: selectedCurve.def.id, color })}
+              probeT={probeT}
+              onProbe={(t) => setProbe({ id: selectedCurve.def.id, t })}
+              intersections={curveIntersections}
+              activeIntersection={activeIntersection}
+              onActivateIntersection={setActiveIntersection}
+              onAddIntersectionPoint={(otherName, index) =>
+                selectedCurve.result.name && addIntersectionPoint(selectedCurve.result.name, otherName, index)
+              }
+              onEdit={() => {
+                setShowExpressions(true);
+                setFocusExpressionId(selectedCurve.def.id);
+              }}
+            />
+          ) : selected ? (
             <SelectionPanel
               key={selected.id}
               workspace={workspace}
@@ -314,4 +456,15 @@ const EXAMPLE: readonly { text: string; hidden?: boolean; slider?: { min: number
   { text: 'gammaL = (zL - 1)/(zL + 1)', hidden: true },
   { text: 'l = 0.125', slider: { min: 0, max: 0.5, step: 0.001 } },
   { text: 'gammaIn = gammaL * exp(-j*4*pi*l)' },
+];
+
+/** Curves example: a load's VSWR circle, the r = 1 circle, their intersection, a line path and a parametric curve. */
+const CURVE_EXAMPLE: readonly { text: string; slider?: { min: number; max: number; step: number } }[] = [
+  { text: 'zL = 0.6 + j0.8' },
+  { text: 'vswrL = vswrCircle(zL)' },
+  { text: 'rUnit = rCircle(1)' },
+  { text: 'pMatch = intersect(vswrL, rUnit, 1)' },
+  { text: 'l = 0.1', slider: { min: 0, max: 0.5, step: 0.001 } },
+  { text: 'path = linePath(zL, l)' },
+  { text: 'spiral = curve(gamma(0.9*exp(-0.6*t)*exp(j*4*pi*t)), t, 0, 2)' },
 ];

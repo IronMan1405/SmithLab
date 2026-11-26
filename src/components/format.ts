@@ -16,9 +16,20 @@ export function formatNumber(value: number, significant = 4): string {
   return text.replace('-', MINUS);
 }
 
-export function formatComplex(c: Complex, significant = 4): string {
-  if (isNaNComplex(c)) return '—';
-  if (isInfinite(c)) return '∞';
+/**
+ * Components smaller than this fraction of the larger one are round-off
+ * (e.g. 0.4939 − j2.4e−16 after a full rotation) and are shown as 0.
+ */
+const NOISE = 1e-12;
+
+export function formatComplex(raw: Complex, significant = 4): string {
+  if (isNaNComplex(raw)) return '—';
+  if (isInfinite(raw)) return '∞';
+  const scale = Math.max(Math.abs(raw.re), Math.abs(raw.im));
+  const c = {
+    re: Math.abs(raw.re) < NOISE * scale ? 0 : raw.re,
+    im: Math.abs(raw.im) < NOISE * scale ? 0 : raw.im,
+  };
   const sign = c.im < 0 || Object.is(c.im, -0) ? MINUS : '+';
   return `${formatNumber(c.re, significant)} ${sign} j${formatNumber(Math.abs(c.im), significant)}`;
 }

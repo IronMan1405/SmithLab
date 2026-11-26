@@ -24,6 +24,8 @@ import {
 
 /** Attribute that marks the hit area of a plotted point. */
 export const POINT_ID_ATTRIBUTE = 'data-point-id';
+/** Attribute that marks the hit area of a curve. Points take priority over curves. */
+export const CURVE_ID_ATTRIBUTE = 'data-curve-id';
 
 interface Options {
   readonly svgRef: RefObject<SVGSVGElement | null>;
@@ -49,7 +51,9 @@ function hitTest(target: EventTarget | null, points: readonly WorkspacePoint[]):
   if (!(target instanceof Element)) return null;
   const id = target.closest(`[${POINT_ID_ATTRIBUTE}]`)?.getAttribute(POINT_ID_ATTRIBUTE);
   const point = id ? points.find((p) => p.id === id) : undefined;
-  return point ? { pointId: point.id, pointGamma: point.gamma } : null;
+  if (point) return { pointId: point.id, pointGamma: point.gamma };
+  const curveId = target.closest(`[${CURVE_ID_ATTRIBUTE}]`)?.getAttribute(CURVE_ID_ATTRIBUTE);
+  return curveId ? { curveId } : null;
 }
 
 export function useChartInteraction({ svgRef, view, points, onCommand }: Options): ChartInteraction {

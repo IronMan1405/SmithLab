@@ -174,8 +174,8 @@ button:disabled {
 
 .hover-status {
   position: absolute;
-  left: 16px;
-  bottom: 16px;
+  right: 16px;
+  top: 16px;
   display: flex;
   gap: 14px;
   padding: 4px 10px;
@@ -843,4 +843,110 @@ button.expr-link {
     border-bottom: 1px solid var(--border);
     max-height: 40%;
   }
+}
+
+/* ---- Milestone 3C: curves ---- */
+
+.expr-examples {
+  display: flex;
+  gap: 14px;
+}
+.expr-visibility.curve {
+  border-radius: 50%;
+}
+.curve-swatch {
+  width: 18px;
+  height: 4px;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+.colour-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.colour-row .colour {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.colour-row .colour.active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--surface) inset;
+}
+.probe {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+.probe-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.probe input[type='range'] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.probe .quantities {
+  margin-top: 4px;
+}
+.intersection-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.intersection-with {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.intersection {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'sel g add' 'sel z add';
+  column-gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.intersection.active {
+  border-color: var(--accent);
+}
+.intersection-select {
+  grid-area: sel;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.intersection .tag {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.intersection-value:nth-of-type(1) {
+  grid-area: g;
+}
+.intersection-value:nth-of-type(2) {
+  grid-area: z;
+  color: var(--text-muted);
+}
+.intersection button.link {
+  grid-area: add;
+  align-self: center;
 }

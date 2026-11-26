@@ -21,10 +21,16 @@ export interface ExpressionDef {
   /** Plottable results are drawn only when visible. Does not affect evaluation. */
   readonly visible: boolean;
   readonly slider: SliderSpec | null;
+  /** Curve colour (palette key, see CURVE_COLORS); null = automatic. */
+  readonly color: CurveColor | null;
 }
 
+/** Theme-aware curve palette; each key maps to a CSS variable `--curve-<key>`. */
+export const CURVE_COLORS = ['teal', 'orange', 'violet', 'blue', 'pink', 'green'] as const;
+export type CurveColor = (typeof CURVE_COLORS)[number];
+
 export function createExpressionDef(id: string, text = ''): ExpressionDef {
-  return { id, text, enabled: true, visible: true, slider: null };
+  return { id, text, enabled: true, visible: true, slider: null, color: null };
 }
 
 /**
@@ -86,4 +92,83 @@ export function withSliderValue(text: string, value: number, step: number): stri
   const literal = sliderLiteral(text);
   if (!literal) return null;
   return `${literal.name} = ${formatSliderValue(value, step)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Dragging expression-defined points
+// ---------------------------------------------------------------------------
+
+/**
+ * Only *literal* point expressions can be dragged, so a drag never rewrites
+ * a computation or an upstream expression:
+ *
+ *   name = a + jb          name = a - jb       name = jb      name = a
+ *   name = z(a + jb)       (also y(…), gamma(…), Z(…) around a literal)
+ *
+ * Anything else (references, arithmetic on other names, function results)
+ * is computed and is not draggable.
+ */
+export interface DraggableLiteral {
+  readonly name: string;
+  /** Conversion/declaration wrapper to preserve, e.g. 'z'. */
+  readonly wrapper: string | null;
+}
+
+const WRAPPERS = new Set(['z', 'y', 'gamma', 'Z']);
+
+function isRealLiteral(node: import('./ast').Node): boolean {
+  return node.kind === 'number' || (node.kind === 'unary' && node.operand.kind === 'number');
+}
+
+function isImaginaryLiteral(node: import('./ast').Node): boolean {
+  return node.kind === 'imaginary' || (node.kind === 'unary' && node.operand.kind === 'imaginary');
+}
+
+function isComplexLiteral(node: import('./ast').Node): boolean {
+  if (isRealLiteral(node) || isImaginaryLiteral(node)) return true;
+  return (
+    node.kind === 'binary' &&
+    (node.op === '+' || node.op === '-') &&
+    isRealLiteral(node.left) &&
+    node.right.kind === 'imaginary'
+  );
+}
+
+export function draggableLiteral(text: string): DraggableLiteral | null {
+  const parsed = parseCached(text);
+  if (!parsed.ok || !parsed.statement.name) return null;
+  const body = parsed.statement.body;
+  if (body.kind === 'call' && WRAPPERS.has(body.name) && body.args.length === 1 && isComplexLiteral(body.args[0]!)) {
+    return { name: parsed.statement.name, wrapper: body.name };
+  }
+  return isComplexLiteral(body) ? { name: parsed.statement.name, wrapper: null } : null;
+}
+
+function trimNumber(value: number, decimals: number): string {
+  const fixed = value.toFixed(decimals);
+  const trimmed = fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed;
+  return trimmed === '-0' ? '0' : trimmed;
+}
+
+/** Format a complex number as an expression literal: `0.5 + j1.2`, `-j0.3`, `2`. */
+export function formatComplexLiteral(re: number, im: number, decimals: number): string {
+  const r = trimNumber(re, decimals);
+  const i = trimNumber(Math.abs(im), decimals);
+  if (i === '0') return r;
+  const sign = im < 0 ? '-' : '+';
+  if (r === '0') return sign === '-' ? `-j${i}` : `j${i}`;
+  return `${r} ${sign} j${i}`;
+}
+
+/**
+ * Rewrite a draggable literal so that it equals `value` (already converted
+ * into the expression's own type). Normalised quantities keep 4 decimals,
+ * physical impedances (Ω) keep 2. Returns null if the text is not a
+ * draggable literal or the value is not finite.
+ */
+export function withDraggedValue(text: string, value: import('../core').Complex, physical: boolean): string | null {
+  const literal = draggableLiteral(text);
+  if (!literal || !Number.isFinite(value.re) || !Number.isFinite(value.im)) return null;
+  const body = formatComplexLiteral(value.re, value.im, physical ? 2 : 4);
+  return `${literal.name} = ${literal.wrapper ? `${literal.wrapper}(${body})` : body}`;
 }

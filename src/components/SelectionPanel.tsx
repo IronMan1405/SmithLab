@@ -17,6 +17,8 @@ export const NEW_LINE_LENGTH = 0.125;
 export interface ExpressionInfo {
   readonly text: string;
   readonly typeLabel: string;
+  /** A literal point that can be dragged on the chart. */
+  readonly draggable: boolean;
 }
 
 interface SelectionPanelProps {
@@ -47,6 +49,11 @@ export function SelectionPanel({ workspace, selected, expression, ...actions }: 
           <div className="defined-by">
             <span className="defined-by-label">Defined by expression · {expression.typeLabel}</span>
             <code>{expression.text}</code>
+            <span className="defined-by-label">
+              {expression.draggable
+                ? 'Drag the point on the chart to edit this value.'
+                : 'Computed from other expressions — not draggable. Edit the expression instead.'}
+            </span>
             <button type="button" className="link expr-link" onClick={() => actions.onEditExpression(selected.id)}>
               Edit in expression panel
             </button>

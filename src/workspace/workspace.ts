@@ -26,7 +26,7 @@
  *   - Z₀ is a finite positive number.
  */
 import { type Complex, DEFAULT_Z0, assertComplex, assertReferenceImpedance } from '../core';
-import { type ExpressionDef, type SliderSpec, assertSlider, createExpressionDef } from '../expressions';
+import { CURVE_COLORS, type CurveColor, type ExpressionDef, type SliderSpec, assertSlider, createExpressionDef } from '../expressions';
 import { type DerivedPoint, dependentsOf, findDerived, pointExists, resolveGamma, transformTowards } from './derived';
 import { clampToDisc } from './disc';
 
@@ -69,6 +69,7 @@ export type WorkspaceAction =
   | { readonly type: 'expression/set-enabled'; readonly id: string; readonly enabled: boolean }
   | { readonly type: 'expression/set-visible'; readonly id: string; readonly visible: boolean }
   | { readonly type: 'expression/set-slider'; readonly id: string; readonly slider: SliderSpec | null }
+  | { readonly type: 'expression/set-color'; readonly id: string; readonly color: CurveColor | null }
   | { readonly type: 'points/clear' }
   | { readonly type: 'z0/set'; readonly z0: number };
 
@@ -174,6 +175,9 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case 'expression/set-slider':
       if (action.slider) assertSlider(action.slider);
       return updateExpression(state, action.id, (e) => ({ ...e, slider: action.slider }));
+    case 'expression/set-color':
+      if (action.color !== null && !CURVE_COLORS.includes(action.color)) throw new RangeError(`Unknown colour "${action.color}"`);
+      return updateExpression(state, action.id, (e) => (e.color === action.color ? e : { ...e, color: action.color }));
     case 'expression/remove': {
       if (!expressionExists(state, action.id)) return state;
       return {

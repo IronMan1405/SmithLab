@@ -236,5 +236,46 @@
   fill: var(--accent);
 }
 .point.expression {
+  cursor: grab;
+}
+.point.expression.locked {
   cursor: pointer;
+}
+
+/* Expression curves (colour comes from --curve-<key> via `color`) */
+.curves .curve-stroke {
+  stroke: currentColor;
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+.curves .curve.selected .curve-stroke {
+  stroke-width: 3px;
+}
+.curves .curve-halo {
+  stroke: currentColor;
+  stroke-width: 9px;
+  opacity: 0.18;
+}
+.curves .curve-hit {
+  stroke: transparent;
+  stroke-width: 12px;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.inspection-marks {
+  pointer-events: none;
+}
+.intersection-mark {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+.intersection-mark.active {
+  stroke: var(--accent);
+  stroke-width: 2.5px;
+}
+.probe-mark {
+  fill: var(--chart-disc) !important;
+  stroke: var(--accent);
+  stroke-width: 2.5px;
 }

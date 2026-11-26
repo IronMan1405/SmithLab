@@ -48,6 +48,8 @@ export interface ResolvedPoint {
   readonly gamma: Complex;
   readonly sourceId: string | null;
   readonly transform: PointTransform | null;
+  /** Expression points only: true when dragging can rewrite the expression's literal. */
+  readonly draggable?: boolean;
 }
 
 export function applyTransform(gamma: Complex, transform: PointTransform): Complex {

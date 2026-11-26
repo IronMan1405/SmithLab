@@ -11,6 +11,8 @@
  *    outside it clears the selection. Crossing the threshold turns it into a
  *    pan, and the release then does nothing. A drag can therefore never
  *    create a point by accident.
+ *  - Primary-button press on a curve → selects the curve. It never creates a
+ *    point; moving past the threshold pans as on the background.
  *  - Middle-button press anywhere → pan immediately.
  *  - Any other button, or a second pointer while a gesture is active, is
  *    ignored.
@@ -34,7 +36,14 @@ export const MIDDLE_BUTTON = 1;
 
 export type Gesture =
   | { readonly kind: 'idle' }
-  | { readonly kind: 'press-background'; readonly pointerId: number; readonly start: Point; readonly startView: View }
+  | {
+      readonly kind: 'press-background';
+      readonly pointerId: number;
+      readonly start: Point;
+      readonly startView: View;
+      /** False when the press landed on a curve: a click then only selects it. */
+      readonly createOnClick: boolean;
+    }
   | { readonly kind: 'pan'; readonly pointerId: number; readonly start: Point; readonly startView: View }
   | {
       readonly kind: 'press-point' | 'drag-point';
@@ -65,8 +74,11 @@ export interface PointerInput {
   readonly button: number;
 }
 
-/** What the pointer went down on: a plotted point, or the chart background. */
-export type PressTarget = { readonly pointId: string; readonly pointGamma: Complex } | null;
+/** What the pointer went down on: a plotted point, a curve, or (null) the chart background. */
+export type PressTarget =
+  | { readonly pointId: string; readonly pointGamma: Complex }
+  | { readonly curveId: string }
+  | null;
 
 export interface Transition {
   readonly gesture: Gesture;
@@ -97,6 +109,12 @@ export function pointerDown(gesture: Gesture, input: PointerInput, target: Press
   }
   if (input.button !== PRIMARY_BUTTON) return { gesture, commands: NOTHING };
 
+  if (target && 'curveId' in target) {
+    return {
+      gesture: { kind: 'press-background', pointerId, start: client, startView: ctx.view, createOnClick: false },
+      commands: [{ type: 'select', id: target.curveId }],
+    };
+  }
   if (target) {
     const grabOffset = sub(target.pointGamma, screenToGamma(client, ctx.rect, ctx.view));
     return {
@@ -104,7 +122,10 @@ export function pointerDown(gesture: Gesture, input: PointerInput, target: Press
       commands: [{ type: 'select', id: target.pointId }],
     };
   }
-  return { gesture: { kind: 'press-background', pointerId, start: client, startView: ctx.view }, commands: NOTHING };
+  return {
+    gesture: { kind: 'press-background', pointerId, start: client, startView: ctx.view, createOnClick: true },
+    commands: NOTHING,
+  };
 }
 
 export function pointerMove(gesture: Gesture, input: Pick<PointerInput, 'pointerId' | 'client'>, ctx: GestureContext): Transition {
@@ -113,7 +134,7 @@ export function pointerMove(gesture: Gesture, input: Pick<PointerInput, 'pointer
   switch (gesture.kind) {
     case 'press-background': {
       if (distance(gesture.start, input.client) <= DRAG_THRESHOLD_PX) return { gesture, commands: NOTHING };
-      const pan: Gesture = { ...gesture, kind: 'pan' };
+      const pan: Gesture = { kind: 'pan', pointerId: gesture.pointerId, start: gesture.start, startView: gesture.startView };
       return pointerMove(pan, input, ctx);
     }
     case 'pan':
@@ -136,6 +157,7 @@ export function pointerUp(gesture: Gesture, input: Pick<PointerInput, 'pointerId
   if (gesture.kind === 'idle' || gesture.pointerId !== input.pointerId) return { gesture, commands: NOTHING };
 
   if (gesture.kind === 'press-background') {
+    if (!gesture.createOnClick) return { gesture: IDLE, commands: NOTHING };
     const gamma = screenToGamma(input.client, ctx.rect, ctx.view);
     if (abs(gamma) > 1) return { gesture: IDLE, commands: [{ type: 'deselect' }] };
     return { gesture: IDLE, commands: [{ type: 'create', gamma: constrainedGamma(gamma, ctx) }] };

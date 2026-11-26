@@ -16,13 +16,14 @@
  *    `recomputed` lists what was actually evaluated.
  */
 import type { Complex } from '../core';
+import type { Curve } from '../geometry/curves';
 import { type Span, referencedNames } from './ast';
 import type { ExpressionDef } from './definitions';
 import { EvaluationError, type ErrorKind, evaluate } from './evaluator';
 import { CONSTANTS, isReservedName } from './functions';
 import { parseCached } from './parser';
 import { type PlotResult, plotValue } from './plot';
-import { type TypedValue, applyDeclaredType } from './types';
+import { type Value, applyDeclaredType, isCurve } from './types';
 
 export interface ExpressionError {
   readonly kind: ErrorKind;
@@ -37,7 +38,10 @@ export interface ExpressionResult {
   /** Name defined by this expression, if any (even when it has an error). */
   readonly name: string | null;
   readonly status: ExpressionStatus;
-  readonly value: TypedValue | null;
+  /** Scalar result (null for curves and failures). */
+  readonly value: import('./types').TypedValue | null;
+  /** Curve result (null for scalars and failures). */
+  readonly curve: Curve | null;
   readonly error: ExpressionError | null;
   /** Variable names this expression references (constants excluded). */
   readonly dependencies: readonly string[];
@@ -239,9 +243,10 @@ function evaluateEntry(
   results: ReadonlyMap<string, ExpressionResult>,
 ): ExpressionResult {
   const base = { id: e.def.id, name: e.name, dependencies: e.deps, signature };
-  if (e.empty) return { ...base, status: 'empty', value: null, error: null, plot: null, usesZ0: false };
-  if (!e.def.enabled) return { ...base, status: 'disabled', value: null, error: null, plot: null, usesZ0: false };
-  if (e.error || !e.body) return { ...base, status: 'error', value: null, error: e.error, plot: null, usesZ0: false };
+  const none = { value: null, curve: null, plot: null } as const;
+  if (e.empty) return { ...base, ...none, status: 'empty', error: null, usesZ0: false };
+  if (!e.def.enabled) return { ...base, ...none, status: 'disabled', error: null, usesZ0: false };
+  if (e.error || !e.body) return { ...base, ...none, status: 'error', error: e.error, usesZ0: false };
 
   let usesZ0 = false;
   const ctx = {
@@ -249,7 +254,7 @@ function evaluateEntry(
     noteZ0: () => {
       usesZ0 = true;
     },
-    lookup: (name: string, span: Span): TypedValue => {
+    lookup: (name: string, span: Span): Value => {
       const depId = nameToId.get(name);
       if (!depId) {
         throw new EvaluationError(
@@ -259,16 +264,16 @@ function evaluateEntry(
         );
       }
       const dep = results.get(depId);
-      if (!dep || dep.status !== 'ok' || !dep.value) {
+      if (!dep || dep.status !== 'ok' || (!dep.value && !dep.curve)) {
         throw new EvaluationError('dependency', `"${name}" has an error`, span);
       }
       if (dep.usesZ0) usesZ0 = true;
-      return dep.value;
+      return dep.value ?? { type: 'curve', curve: dep.curve! };
     },
   };
 
   try {
-    let value = evaluate(e.body, ctx);
+    let value: Value = evaluate(e.body, ctx);
     if (e.name) {
       try {
         value = applyDeclaredType(e.name, value);
@@ -277,14 +282,17 @@ function evaluateEntry(
         throw error;
       }
     }
+    if (isCurve(value)) {
+      return { ...base, status: 'ok', value: null, curve: value.curve, error: null, plot: null, usesZ0 };
+    }
     const plot = plotValue(value, ctx);
-    return { ...base, status: 'ok', value, error: null, plot, usesZ0 };
+    return { ...base, status: 'ok', value, curve: null, error: null, plot, usesZ0 };
   } catch (error) {
     if (error instanceof EvaluationError) {
-      return { ...base, status: 'error', value: null, error: { kind: error.kind, message: error.message, span: error.span }, plot: null, usesZ0 };
+      return { ...base, ...none, status: 'error', error: { kind: error.kind, message: error.message, span: error.span }, usesZ0 };
     }
     const message = error instanceof Error ? error.message : String(error);
-    return { ...base, status: 'error', value: null, error: { kind: 'math', message, span: null }, plot: null, usesZ0 };
+    return { ...base, ...none, status: 'error', error: { kind: 'math', message, span: null }, usesZ0 };
   }
 }
 

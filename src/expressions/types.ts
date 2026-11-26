@@ -16,13 +16,28 @@
  * `real` and `complex` are "plain"; the rest are "domain" types.
  */
 import type { Complex } from '../core';
+import type { Curve } from '../geometry/curves';
 
 export type ValueType = 'real' | 'complex' | 'impedance' | 'admittance' | 'reflection' | 'physicalImpedance' | 'length';
 export type DomainType = Exclude<ValueType, 'real' | 'complex'>;
 
+/** A scalar (number-like) value. */
 export interface TypedValue {
   readonly type: ValueType;
   readonly value: Complex;
+}
+
+/** A curve in the Γ-plane, produced by a curve construction. */
+export interface CurveValue {
+  readonly type: 'curve';
+  readonly curve: Curve;
+}
+
+/** Anything an expression can evaluate to. */
+export type Value = TypedValue | CurveValue;
+
+export function isCurve(value: Value): value is CurveValue {
+  return value.type === 'curve';
 }
 
 export interface TypeInfo {
@@ -166,14 +181,22 @@ export function declaredTypeForName(name: string): DomainType | null {
 }
 
 /** Apply the naming convention to an assigned value; throws TypeMismatch on a conflict. */
-export function applyDeclaredType(name: string, value: TypedValue): TypedValue {
+export function applyDeclaredType<V extends Value>(name: string, value: V): V {
   const declared = declaredTypeForName(name);
+  if (value.type === 'curve') {
+    if (declared) {
+      throw new TypeMismatch(
+        `"${name}" is named like a ${label(declared)}, but the expression is a curve. Choose a name without the ${declared === 'reflection' ? 'gamma' : name[0]} prefix, e.g. c1`,
+      );
+    }
+    return value;
+  }
   if (!declared || declared === value.type) return value;
   if (isPlain(value.type)) {
     if (declared === 'length' && value.type !== 'real') {
       throw new TypeMismatch(`"${name}" is an electrical length, which must be a real number of wavelengths`);
     }
-    return { type: declared, value: value.value };
+    return { type: declared, value: value.value } as V;
   }
   const ctor = TYPE_INFO[declared].constructorName;
   throw new TypeMismatch(

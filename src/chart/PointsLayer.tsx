@@ -51,7 +51,7 @@ export const PointsLayer = memo(function PointsLayer({ points, selectedId, units
           <g
             key={point.id}
             {...{ [POINT_ID_ATTRIBUTE]: point.id }}
-            className={['point', point.role, selected ? 'selected' : ''].join(' ').trim()}
+            className={['point', point.role, selected ? 'selected' : '', expression && !point.draggable ? 'locked' : ''].join(' ').trim()}
             transform={`translate(${x} ${y})`}
             tabIndex={0}
             role="button"

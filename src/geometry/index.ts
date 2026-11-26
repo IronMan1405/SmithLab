@@ -7,3 +7,6 @@ export * from './grid';
 export * from './labels';
 export * from './transmission-line-paths';
 export * from './wavelength-scale';
+export * from './curves';
+export * from './curve-sampling';
+export * from './intersections';

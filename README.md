@@ -3,7 +3,21 @@
 An interactive, freeform Smith Chart workspace. SmithLab aims to be a
 mathematical instrument rather than a form-based impedance calculator.
 
-**Status: Milestone 3B — expression engine.** Smith Chart constructions can
+**Status: Milestone 3C — geometric expressions and curves.** Expressions can
+now produce curves as well as points:
+
+```
+zL = 0.6 + j0.8                      ← drag this point on the chart
+vswrL = vswrCircle(zL)
+rUnit = rCircle(1)
+pMatch = intersect(vswrL, rUnit, 1)  ← follows zL as you drag
+spiral = curve(gamma(0.9*exp(-0.6*t)*exp(j*4*pi*t)), t, 0, 2)
+```
+
+Curves can be selected on the chart and inspected: their parameters, a probe
+point along the curve, and their intersections with other curves.
+
+Previously, in Milestone 3B (expression engine): Smith Chart constructions can
 now be written as mathematical relationships, for example:
 
 ```
@@ -65,14 +79,19 @@ src/
 │   ├── vswr-circles.ts       Constant-|Γ| circles
 │   ├── transmission-line-paths.ts  Line path circle, directed arc + tangent
 │   ├── wavelength-scale.ts   WTG/WTL readings, ticks, labels, title paths
+│   ├── curves.ts             Curve model: point(t), parameter, exact shape if known
+│   ├── curve-sampling.ts     Adaptive sampling, singularities, jumps, disc clipping
+│   ├── intersections.ts      Analytic + numerical curve intersections
 │   ├── grid.ts               Declarative grid spec → list of curves
 │   ├── labels.ts             Label anchors and directions in the Γ-plane
 │   └── index.ts
 │
-├── expressions/   Expression language. Pure TS; depends only on core.
+├── expressions/   Expression language. Pure TS; depends on core and geometry.
 │   ├── lexer.ts, parser.ts, ast.ts   Tokens → AST (recursive descent, no eval)
 │   ├── types.ts          Typed values and operator type rules, naming convention
 │   ├── functions.ts      Built-in function registry (math + RF)
+│   ├── curve-functions.ts  Curve constructions, intersect(), at()
+│   ├── drag.ts           Dragging literal point expressions
 │   ├── evaluator.ts      AST → typed value using core arithmetic
 │   ├── engine.ts         Name binding, dependency graph, cycles, incremental eval
 │   ├── plot.ts           Typed value → Γ chart position
@@ -92,6 +111,8 @@ src/
 │   ├── PointsLayer.tsx   Point markers, hit areas, focusable for keyboard
 │   ├── SelectionOverlay.tsx  Constant r / x / |Γ| curves through the selection
 │   ├── TransmissionLineLayer.tsx  Line path, load→input arc, direction arrow
+│   ├── CurvesLayer.tsx   Expression curves (+ hit paths), probe/intersection marks
+│   ├── curve-paths.ts    Curve → SVG path (exact arcs or cached adaptive samples)
 │   ├── WavelengthScale.tsx  Toward-generator / toward-load perimeter scales
 │   └── chart.css
 │
@@ -445,6 +466,81 @@ A value gets its type in one of three ways:
 - Manually placed points and transmission-line points are unchanged and independent of expressions.
 - An expression point can be selected and inspected, but it can't be dragged, deleted from the chart, or used as the source of a UI transmission line. Use `line(x, l)` in an expression instead.
 
+### Curves (Milestone 3C)
+
+**Constructions.** A curve is the result of one of these expressions:
+
+| Expression | Curve | Parameter (for inspection) |
+|---|---|---|
+| `vswrCircle(s)` or `vswrCircle(x)` | constant-\|Γ\| circle, for a VSWR `s ≥ 1` or through a z/y/Γ/Z point | WTG, 0–0.5λ |
+| `rCircle(r)` or `rCircle(z)` | constant-resistance circle (`z` uses Re z) | x |
+| `xCircle(x)` or `xCircle(z)` | constant-reactance arc (x = 0 is the real axis) | r |
+| `gCircle(g)` / `bCircle(b)` | constant-conductance circle / susceptance arc | b / g |
+| `linePath(x, l)` or `linePath(x, l0, l1)` | Γ(l) = Γ_L·e^(−j4πl), clockwise toward the generator | l |
+| `curve(expr, t, t0, t1)` | any parametric curve Γ(t) | t |
+
+Two functions turn curves back into points:
+- `intersect(c1, c2, k)` gives the k-th intersection as a Γ point (k defaults to 1).
+- `at(c, t)` gives the point of curve `c` at parameter `t`.
+
+Rules:
+- Curves can't be used in arithmetic.
+- A curve must not be given a typed name such as `zC`; names like `c1` or `vswrL` are fine.
+
+**Representation.** `src/geometry/curves.ts` defines a `Curve` as:
+- `point(t) → Γ`, the mathematical definition, over a finite named parameter interval;
+- the exact `Shape` (circle, arc or segment) whenever one is known;
+- its defining properties, for display.
+
+The expression text is still the only stored state. A curve is recomputed through the normal dependency engine whenever something upstream changes. Sampled coordinates are never stored; they are a cache.
+
+**Generic vs. built-in curves.**
+- `curve(expr, t, t0, t1)` is a *special form*. Its body is not evaluated immediately: it becomes Γ(t), with `t` bound locally, so `t` shadows any global `t` and is not a dependency.
+- The body must evaluate to z, y, Γ or Z, which are converted to Γ.
+- At construction, the body is evaluated at a few probe values. Reference and type errors there are reported straight away.
+- Mathematical failures at individual parameter values (0/0, undefined functions) only mark singular points.
+- The built-in constructions are kept as well, because they carry exact geometry. That makes their rendering perfectly smooth and their intersections analytic.
+
+**Sampling and clipping.**
+- Built-in constructions render as true SVG arcs, so they are exact at any zoom and are clipped to the unit disc.
+- Generic curves are sampled adaptively (`curve-sampling.ts`), starting from 64 intervals. An interval is bisected while any of these holds:
+  - the midpoint is further from the chord than the tolerance (0.35 screen pixels, converted to Γ units);
+  - the chord is longer than 0.05;
+  - the midpoint collapses onto one end, which is how a jump looks;
+  - the curve crosses the unit circle.
+- Undefined points break the polyline, and so does an interval that is still long at the maximum depth (a jump). Separate pieces are never joined.
+- Crossings of the unit circle are located by bisection and projected onto the circle.
+- Samples are cached per curve object and per power-of-two tolerance:
+  - panning reuses samples, zooming resamples (in the browser the spiral went from 378 to 853 segments at 1658%);
+  - a curve that wasn't re-evaluated is never resampled.
+
+**Inspection.**
+- Selecting a curve, on the chart (each curve has a 12 px hit stroke) or by focusing its row, opens the curve inspector. It shows:
+  - the defining expression and parameters;
+  - a colour picker with 6 theme-aware colours;
+  - a probe slider along the parameter, with a probe marker and its Γ, z and y;
+  - the curve's intersections with every other visible curve.
+- Hovering the chart shows Γ, z and y at the pointer.
+- Pressing a curve only selects it; dragging from a curve pans.
+
+**Intersections** (`geometry/intersections.ts`).
+- **Exact curves** use analytic circle–circle, circle–line and line–line intersections, restricted to each arc's range.
+  - A tangency (the curves touch within 1e-9) is reported as one point marked "tangent".
+  - Identical curves are reported as coincident, not as a set of points.
+  - When curves don't meet, the closest approach is reported, so a near-miss is visibly different from an intersection.
+- **Generic curves** use numerical methods, and their results are marked "numerical":
+  - against an exact curve, sign changes of its implicit equation along an adaptive sampling are refined by bisection;
+  - between two generic curves, crossings of the sampled polylines are refined by Newton's method on Γ₁(t) − Γ₂(s) = 0.
+- Results are deduplicated within 1e-7, kept only inside |Γ| ≤ 1, and ordered by increasing Re Γ (upper point first when Re is equal). Γ = 1, the point at infinity, therefore always comes last. For example, an r-circle and an x-arc always also meet there.
+- Each intersection in the inspector can be highlighted on the chart and turned into a point expression `pN = intersect(c1, c2, k)`.
+
+**Dragging expression points.**
+- A point expression whose body is a *literal* can be dragged: `zL = 0.5 + j1.2`, `zL = -j0.3`, `zL = 2`, or a literal wrapped in `z()`, `y()`, `gamma()` or `Z()`.
+- The drag converts Γ back into the expression's own type and rewrites only that literal, to 4 decimals for normalized values and 2 for Ω. Dependents then update through normal re-evaluation.
+- Arrow keys nudge a draggable expression point the same way.
+- Computed points (`intersect(…)`, `1/zL`, …) are locked. Their cursor doesn't offer a drag, and the inspector explains why.
+- A drag that would need an infinite value (an impedance at Γ = 1) is ignored.
+
 ### Characteristic impedance
 
 The Z₀ field in the toolbar applies valid positive values immediately. Invalid
@@ -456,7 +552,11 @@ normalised z is unchanged and its physical Z = z·Z₀ is re-derived.
 
 ## Known limitations
 
-- **Expression points are read-only on the chart.** Dragging one does not edit its expression; that needs an inverse "drag → literal" mapping, planned for later.
+- **Only literal expression points are draggable.** Points computed from other expressions are locked, by design.
+- **No tangency detection for generic curves.** Tangencies are detected only between exact curves. A generic curve that just touches another curve may be missed or reported as a crossing.
+- **Intersections are pairwise.** They are listed for the selected curve against each other visible curve, and there is no "all intersections" overlay. Two generic curves are intersected numerically, at a cost that grows with the product of their sample counts.
+- **Generic curves need a finite parameter range.** Built-in r/x/g/b curves are inspected over x, r, b or g in [−10, 10] or [0, 10], but they are drawn in full.
+- **No arithmetic on curves.** Curve transformations such as `line(curve, l)` are not supported yet.
 - **Real-valued sliders only.** Sliders require the form `name = number`, so complex values can't be slider-driven directly. Use two real sliders, e.g. `zL = r + j*x`.
 - **No persistence.** Expressions, like points, are lost on reload.
 - **Expression points can't be the source of a UI transmission line.** Use `line()` in an expression instead.

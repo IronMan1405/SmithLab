@@ -20,6 +20,7 @@ export interface ExpressionPanelActions {
   readonly onSliderValue: (id: string, value: number) => void;
   readonly onSelect: (id: string) => void;
   readonly onInsertExample: () => void;
+  readonly onInsertCurveExample: () => void;
   readonly onFocusHandled: () => void;
 }
 
@@ -27,6 +28,10 @@ interface ExpressionPanelProps extends ExpressionPanelActions {
   readonly expressions: readonly ExpressionDef[];
   readonly evaluation: EvaluationOutput;
   readonly selectedId: string | null;
+  /** Display colour of each curve expression (palette key). */
+  readonly curveColors: ReadonlyMap<string, string>;
+  /** Ids of point expressions that can be dragged on the chart. */
+  readonly draggableIds: ReadonlySet<string>;
   /** Expression whose input should receive focus (e.g. just added). */
   readonly focusId: string | null;
 }
@@ -48,9 +53,14 @@ export function ExpressionPanel(props: ExpressionPanelProps) {
             Define values and relationships, e.g. <code>zL = 0.5 + j1.2</code>. Impedances, admittances and reflection
             coefficients are plotted on the chart.
           </p>
-          <button type="button" className="link expr-link" onClick={props.onInsertExample}>
-            Insert an example
-          </button>
+          <div className="expr-examples">
+            <button type="button" className="link expr-link" onClick={props.onInsertExample}>
+              Insert point example
+            </button>
+            <button type="button" className="link expr-link" onClick={props.onInsertCurveExample}>
+              Insert curve example
+            </button>
+          </div>
         </div>
       ) : (
         <ol className="expr-list">
@@ -62,6 +72,8 @@ export function ExpressionPanel(props: ExpressionPanelProps) {
               result={evaluation.results.get(def.id)}
               selected={props.selectedId === def.id}
               focus={props.focusId === def.id}
+              curveColor={props.curveColors.get(def.id) ?? null}
+              draggable={props.draggableIds.has(def.id)}
               actions={props}
             />
           ))}
@@ -77,10 +89,12 @@ interface RowProps {
   readonly result: ExpressionResult | undefined;
   readonly selected: boolean;
   readonly focus: boolean;
+  readonly curveColor: string | null;
+  readonly draggable: boolean;
   readonly actions: ExpressionPanelActions;
 }
 
-function ExpressionRow({ index, def, result, selected, focus, actions }: RowProps) {
+function ExpressionRow({ index, def, result, selected, focus, curveColor, draggable, actions }: RowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (focus && inputRef.current) {
@@ -91,8 +105,9 @@ function ExpressionRow({ index, def, result, selected, focus, actions }: RowProp
 
   const value = result?.status === 'ok' ? result.value : null;
   const type = value ? TYPE_INFO[value.type] : null;
-  const plotted = result?.plot?.kind === 'point';
-  const plottable = type?.plottable ?? false;
+  const curve = result?.status === 'ok' ? result.curve : null;
+  const plotted = result?.plot?.kind === 'point' || curve !== null;
+  const plottable = (type?.plottable ?? false) || curve !== null;
   const literal = sliderLiteral(def.text);
   const status = result?.status ?? 'empty';
 
@@ -102,7 +117,8 @@ function ExpressionRow({ index, def, result, selected, focus, actions }: RowProp
         <span className="expr-index">{index + 1}</span>
         <button
           type="button"
-          className={['expr-visibility', plottable ? 'plottable' : '', def.visible ? 'shown' : ''].join(' ').trim()}
+          style={curve && curveColor ? { borderColor: `var(--curve-${curveColor})`, background: def.visible ? `var(--curve-${curveColor})` : 'transparent' } : undefined}
+          className={['expr-visibility', plottable ? 'plottable' : '', curve ? 'curve' : '', def.visible ? 'shown' : ''].join(' ').trim()}
           disabled={!plottable}
           aria-pressed={def.visible}
           aria-label={def.visible ? 'Hide on chart' : 'Show on chart'}
@@ -140,6 +156,18 @@ function ExpressionRow({ index, def, result, selected, focus, actions }: RowProp
             </span>
           </div>
         )}
+        {status === 'ok' && curve && (
+          <div className="expr-result">
+            <span className="expr-value">
+              = {curve.label}
+              {curve.properties.length > 0 && ` · ${curve.properties.map((p) => `${p.label} ${p.value}`).join(', ')}`}
+            </span>
+            <span className="type-chip type-curve" style={curveColor ? { borderColor: `var(--curve-${curveColor})`, color: `var(--curve-${curveColor})` } : undefined} title="curve">
+              ∿
+            </span>
+          </div>
+        )}
+        {status === 'ok' && value && plotted && draggable && <div className="expr-note">Drag the point on the chart to edit this value.</div>}
         {status === 'error' && result?.error && (
           <div className="expr-error" role="alert">
             {result.error.message}
