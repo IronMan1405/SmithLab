@@ -1,5 +1,6 @@
 /**
- * Workspace state: plotted points, selection and the reference impedance.
+ * Workspace state: plotted points, derived points, selection and the
+ * reference impedance.
  *
  * Points are stored by their reflection coefficient Γ — the chart's own
  * coordinate — and every electrical quantity is derived from Γ and Z₀ by the
@@ -7,13 +8,20 @@
  * where it is on the chart (same Γ, same normalised z) and re-derives its
  * physical impedance Z = z·Z₀.
  *
+ * Derived points (see `derived.ts`) store a source id and a transform, never
+ * a Γ; their Γ is recomputed from the source whenever it is needed.
+ *
  * Invariants maintained by the reducer:
- *   - every point has a unique, stable string id (never an array index);
- *   - every point satisfies |Γ| ≤ 1;
- *   - `selectedId` is null or the id of an existing point;
+ *   - every point (plotted or derived) has a unique, stable string id;
+ *   - every plotted point satisfies |Γ| ≤ 1 (derived points inherit this,
+ *     since lossless lines preserve |Γ|);
+ *   - every derived point's source exists (deleting a point deletes its
+ *     dependents);
+ *   - `selectedId` is null or the id of an existing point of either kind;
  *   - Z₀ is a finite positive number.
  */
 import { type Complex, DEFAULT_Z0, assertComplex, assertReferenceImpedance } from '../core';
+import { type DerivedPoint, dependentsOf, findDerived, pointExists, resolveGamma, transformTowards } from './derived';
 import { clampToDisc } from './disc';
 
 export interface WorkspacePoint {
@@ -23,7 +31,10 @@ export interface WorkspacePoint {
 }
 
 export interface WorkspaceState {
+  /** Plotted (independent) points. */
   readonly points: readonly WorkspacePoint[];
+  /** Points derived from others by a transformation. */
+  readonly derived: readonly DerivedPoint[];
   readonly selectedId: string | null;
   readonly z0: number;
   /** Next number used for default names (P1, P2, …). Never reused. */
@@ -36,6 +47,14 @@ export type WorkspaceAction =
   | { readonly type: 'point/select'; readonly id: string | null }
   | { readonly type: 'point/rename'; readonly id: string; readonly name: string }
   | { readonly type: 'point/delete'; readonly id: string }
+  | {
+      readonly type: 'line/add';
+      readonly id: string;
+      readonly sourceId: string;
+      readonly length: number;
+      readonly name?: string;
+    }
+  | { readonly type: 'line/set-length'; readonly id: string; readonly length: number }
   | { readonly type: 'points/clear' }
   | { readonly type: 'z0/set'; readonly z0: number };
 
@@ -43,7 +62,7 @@ export const MAX_NAME_LENGTH = 40;
 
 export function createWorkspace(z0: number = DEFAULT_Z0): WorkspaceState {
   assertReferenceImpedance(z0);
-  return { points: [], selectedId: null, z0, nextNumber: 1 };
+  return { points: [], derived: [], selectedId: null, z0, nextNumber: 1 };
 }
 
 function normalizeName(name: string): string {
@@ -54,7 +73,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
   switch (action.type) {
     case 'point/create': {
       assertComplex(action.gamma, 'reflection coefficient');
-      if (state.points.some((p) => p.id === action.id)) {
+      if (pointExists(state, action.id)) {
         throw new Error(`Duplicate point id "${action.id}"`);
       }
       const name = normalizeName(action.name ?? '') || `P${state.nextNumber}`;
@@ -63,6 +82,8 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case 'point/move': {
       assertComplex(action.gamma, 'reflection coefficient');
+      const derived = findDerived(state, action.id);
+      if (derived) return moveDerived(state, derived, action.gamma);
       const gamma = clampToDisc(action.gamma);
       let changed = false;
       const points = state.points.map((p) => {
@@ -73,32 +94,82 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return changed ? { ...state, points } : state;
     }
     case 'point/select': {
-      if (action.id !== null && !state.points.some((p) => p.id === action.id)) return state;
+      if (action.id !== null && !pointExists(state, action.id)) return state;
       return state.selectedId === action.id ? state : { ...state, selectedId: action.id };
     }
     case 'point/rename': {
       const name = normalizeName(action.name);
       if (!name) return state; // Empty names are rejected; the old name is kept.
-      return { ...state, points: state.points.map((p) => (p.id === action.id ? { ...p, name } : p)) };
-    }
-    case 'point/delete': {
-      if (!state.points.some((p) => p.id === action.id)) return state;
       return {
         ...state,
-        points: state.points.filter((p) => p.id !== action.id),
-        selectedId: state.selectedId === action.id ? null : state.selectedId,
+        points: state.points.map((p) => (p.id === action.id ? { ...p, name } : p)),
+        derived: state.derived.map((p) => (p.id === action.id ? { ...p, name } : p)),
       };
     }
+    case 'point/delete': {
+      if (!pointExists(state, action.id)) return state;
+      // Deleting a point also deletes everything derived from it.
+      const removed = new Set([action.id, ...dependentsOf(state, action.id)]);
+      return {
+        ...state,
+        points: state.points.filter((p) => !removed.has(p.id)),
+        derived: state.derived.filter((p) => !removed.has(p.id)),
+        selectedId: state.selectedId !== null && removed.has(state.selectedId) ? null : state.selectedId,
+      };
+    }
+    case 'line/add': {
+      assertLength(action.length);
+      if (pointExists(state, action.id)) throw new Error(`Duplicate point id "${action.id}"`);
+      if (!pointExists(state, action.sourceId)) throw new Error(`Unknown source point "${action.sourceId}"`);
+      const sourceName = state.points.find((p) => p.id === action.sourceId)?.name ?? findDerived(state, action.sourceId)?.name;
+      const point: DerivedPoint = {
+        id: action.id,
+        name: normalizeName(action.name ?? '') || `${sourceName ?? 'P'} in`,
+        sourceId: action.sourceId,
+        transform: { type: 'line', length: action.length },
+      };
+      return { ...state, derived: [...state.derived, point], selectedId: point.id };
+    }
+    case 'line/set-length': {
+      assertLength(action.length);
+      const target = findDerived(state, action.id);
+      if (!target || target.transform.type !== 'line' || target.transform.length === action.length) return state;
+      return replaceDerived(state, { ...target, transform: { type: 'line', length: action.length } });
+    }
     case 'points/clear':
-      return { ...state, points: [], selectedId: null };
+      return { ...state, points: [], derived: [], selectedId: null };
     case 'z0/set':
       assertReferenceImpedance(action.z0);
       return { ...state, z0: action.z0 };
   }
 }
 
+/** The selected *plotted* point, or null (also null when a derived point is selected). */
 export function selectedPoint(state: WorkspaceState): WorkspacePoint | null {
   return state.points.find((p) => p.id === state.selectedId) ?? null;
+}
+
+function assertLength(length: number): void {
+  if (typeof length !== 'number' || !Number.isFinite(length)) {
+    throw new RangeError(`Line length must be a finite number of wavelengths (got ${String(length)})`);
+  }
+}
+
+function replaceDerived(state: WorkspaceState, next: DerivedPoint): WorkspaceState {
+  return { ...state, derived: state.derived.map((p) => (p.id === next.id ? next : p)) };
+}
+
+/**
+ * A derived point cannot be placed freely: moving it toward `target`
+ * changes its transform parameter instead (for a line, the length that
+ * rotates the source's Γ toward the target), so the dependency is kept.
+ */
+function moveDerived(state: WorkspaceState, point: DerivedPoint, target: Complex): WorkspaceState {
+  const sourceGamma = resolveGamma(state, point.sourceId);
+  if (!sourceGamma) return state;
+  const transform = transformTowards(sourceGamma, point.transform, target);
+  if (!transform || transform.length === point.transform.length) return state;
+  return replaceDerived(state, { ...point, transform });
 }
 
 let idCounter = 0;

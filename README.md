@@ -3,7 +3,12 @@
 An interactive, freeform Smith Chart workspace. SmithLab aims to be a
 mathematical instrument rather than a form-based impedance calculator.
 
-**Status: Milestone 2 — interactive workspace.** Milestone 1 built the
+**Status: Milestone 3A — transmission-line explorer.** You can select a
+load, add a lossless transmission line, and drag its electrical length to watch
+the input impedance move around the constant-VSWR circle. Wavelength scales
+around the chart show the same movement.
+
+Previously, in Milestone 2 (interactive workspace): Milestone 1 built the
 mathematical engine, the geometry engine and a mathematically generated SVG
 Smith Chart. Milestone 2 adds direct manipulation: you can click to place
 impedance points, drag them, inspect their electrical quantities, change Z₀,
@@ -36,6 +41,7 @@ src/
 │   ├── reflection.ts    Γ ↔ z
 │   ├── admittance.ts    y = 1/z, Y ↔ y, Γ ↔ y
 │   ├── vswr.ts          VSWR, |Γ| from VSWR, return loss
+│   ├── transmission-line.ts  Lossless line: Γ/z through a line, reverse, λ, l/λ
 │   └── index.ts
 │
 ├── geometry/      Chart geometry in the Γ-plane. Depends only on core.
@@ -44,12 +50,15 @@ src/
 │   ├── impedance-circles.ts  Constant-r circles, constant-x arcs
 │   ├── admittance-circles.ts Constant-g circles, constant-b arcs
 │   ├── vswr-circles.ts       Constant-|Γ| circles
+│   ├── transmission-line-paths.ts  Line path circle, directed arc + tangent
+│   ├── wavelength-scale.ts   WTG/WTL readings, ticks, labels, title paths
 │   ├── grid.ts               Declarative grid spec → list of curves
 │   ├── labels.ts             Label anchors and directions in the Γ-plane
 │   └── index.ts
 │
 ├── workspace/     Workspace state. Pure TS; depends only on core.
-│   ├── workspace.ts      Reducer: points {id, name, Γ}, selection, Z₀
+│   ├── workspace.ts      Reducer: points {id, name, Γ}, derived points, selection, Z₀
+│   ├── derived.ts        Derived points {id, sourceId, transform}; Γ resolution
 │   ├── quantities.ts     z, Z, Γ, |Γ|, ∠Γ, VSWR, RL, y for a point (+ load kind)
 │   └── disc.ts           Clamp to |Γ| ≤ 1; snap to match/short/open
 │
@@ -60,6 +69,8 @@ src/
 │   ├── ChartGrid.tsx, ChartLabels.tsx
 │   ├── PointsLayer.tsx   Point markers, hit areas, focusable for keyboard
 │   ├── SelectionOverlay.tsx  Constant r / x / |Γ| curves through the selection
+│   ├── TransmissionLineLayer.tsx  Line path, load→input arc, direction arrow
+│   ├── WavelengthScale.tsx  Toward-generator / toward-load perimeter scales
 │   └── chart.css
 │
 ├── interaction/   Pointer and keyboard input.
@@ -68,8 +79,9 @@ src/
 │   ├── useChartInteraction.ts  DOM adapter: pointer capture, hit-testing, wheel
 │   ├── useKeyboardShortcuts.ts, useElementSize.ts
 │
-├── components/    Application UI: toolbar, Z₀ control, inspector, point list,
-│                  view controls, hover status, theme switcher
+├── components/    Application UI: toolbar, Z₀ control, selection panel
+│                  (inspector + line controls), point list, view controls,
+│                  hover status, theme switcher
 ├── styles/        themes.css (all colour/weight tokens), global.css
 ├── App.tsx
 └── main.tsx
@@ -151,6 +163,23 @@ VSWR = (1 + |Γ|) / (1 − |Γ|)          RL = −20 log₁₀ |Γ|  dB
 - For |Γ| > 1, VSWR throws a `RangeError` because the formula has no physical meaning there.
 - RL = +∞ dB at Γ = 0 and 0 dB at |Γ| = 1. It is **negative** for |Γ| > 1 (reflection gain), and is reported rather than hidden.
 
+### Lossless transmission line
+
+```
+Γ_in = Γ_L · e^(−j2βl) = Γ_L · e^(−j4πd),    β = 2π/λ,  d = l/λ
+λ = v_f · c / f
+```
+
+- `d` is the electrical length in wavelengths, measured from the load **toward the generator**.
+- Positive d rotates Γ **clockwise**. Negative d rotates counter-clockwise, which is the reverse transformation (`loadReflectionFromInput`).
+- |Γ| and VSWR are preserved, and the transformation is periodic with period λ/2.
+- The rotation phasor is exact at multiples of λ/8, so λ/8, λ/4 and λ/2 give exactly −90°, −180° and 360°.
+- The line's characteristic impedance is the workspace Z₀. A line with a different Z₀ would need a reference-impedance change, which is deliberately not modelled yet.
+- Checks covered by tests:
+  - Agreement with the closed form z_in = (z_L + j tan βl)/(1 + j z_L tan βl).
+  - The quarter-wave transformer: z_in = 1/z_L at λ/4.
+  - Short ↔ open over λ/4.
+
 ### Chart geometry (Γ = u + jv)
 
 ```
@@ -208,6 +237,13 @@ Full documentation is in `src/geometry/coordinates.ts`.
    `x = u·R`, `y = −v·R` (y is negated because SVG's y axis points down).
 3. **Screen.** The browser maps user space to the screen with `preserveAspectRatio="xMidYMid meet"`, which applies a uniform scale, so the chart is never distorted. `chart/viewport.ts` reproduces that mapping as pure functions (`screenToSvg`, `svgToScreen`, `screenToGamma`, `gammaToScreen`), taking the element's bounding rectangle as the only DOM input. This keeps the mapping unit-testable, and it was checked against the browser's own `getScreenCTM()`.
 
+**Wavelength scales.** Both scales read 0 at the short-circuit point (Γ = −1, the left edge) and cover λ/2 per revolution.
+- The outer row, **wavelengths toward generator**, increases clockwise: 0 → 0.125 (top) → 0.25 (right) → 0.375 (bottom). WTG = ((π − ∠Γ)/4π) mod ½. Adding a line of length d therefore advances the WTG reading by exactly d, matching e^(−j4πd).
+- The inner row, **wavelengths toward load**, is (½ − WTG) mod ½ and increases counter-clockwise.
+- The titles are drawn along curved paths so their arrows follow the direction of rotation: along the top, left-to-right is clockwise (toward the generator); along the bottom, left-to-right is counter-clockwise (toward the load).
+- The scales are generated in the Γ-plane and drawn in the same SVG space as the chart, so they stay aligned at every zoom level and window size.
+- `CHART_MARGIN` grew to 330 units to make room for the scales.
+
 **Pan and zoom.** The view is `{ center: Γ, zoom }`. The viewBox is derived from it and is always square, so the chart stays circular at every zoom level and window size. Zoom anchors at the cursor, and pan keeps the grabbed point under the pointer. Zoom is limited to 0.8×–500×, and the centre is kept within ±1.25 so the chart can't be lost off-screen. Point markers, labels and line weights keep a constant on-screen size.
 
 Stroke widths are given in CSS pixels with `vector-effect: non-scaling-stroke`,
@@ -264,6 +300,29 @@ name can be edited inline. Special cases:
 - **Open:** z = Z = ∞, y = 0.
 - **On the boundary:** r and g are exactly 0, removing ±1e-16 round-off.
 
+### Transmission lines (Milestone 3A)
+
+1. Select a plotted point (the load) and choose **+ Add transmission line**. A dependent input point (◆) is created at 0.125λ and selected.
+2. Change its length in any of these ways:
+   - **Numeric field:** accepts any finite length, including more than λ/2, or negative for toward the load.
+   - **Slider:** covers 0 to λ/2. For lengths outside that range it shows the equivalent position within the period and keeps the whole half-wavelengths already entered.
+   - **Arrow keys:** ±0.001λ, or Shift for ±0.01λ.
+   - **Dragging the ◆:** it slides along its constant-|Γ| circle. Dragging never moves it off the circle, and the length stays continuous past λ/2.
+   - **0λ** resets the length.
+3. On the chart:
+   - The dashed circle is the full constant-VSWR path, centred at Γ = 0 with radius |Γ_L|.
+   - The solid arc with an arrowhead is the rotation actually applied, from load to input.
+4. The inspector shows:
+   - The input values: z_in, Z_in, Γ_in, |Γ_in|, ∠Γ_in, VSWR, return loss, y_in, length and the WTG reading.
+   - Below them, the load's z_L, Z_L, Γ_L, |Γ_L| and WTG, so the two can be compared.
+5. Moving the load moves the input point with it. **Remove line** deletes only the derived point. Deleting the load also removes its lines.
+
+**Derived-point model.**
+- A derived point stores `{ id, name, sourceId, transform: { type: 'line', length } }` and never a Γ. Its Γ is recomputed from the source by `resolveGamma` whenever it is needed, so the dependency can't go stale.
+- `sourceId` may name another derived point. That is how future chains (line → series element → line) will be expressed, one transform per link, with no general graph framework.
+- `PointTransform` is a tagged union, so adding series/shunt elements means adding a new case rather than changing the model.
+- Dragging a derived point is handled by the same `point/move` command as any other point. For a derived point, the reducer changes its transform parameter instead of storing a position.
+
 ### Characteristic impedance
 
 The Z₀ field in the toolbar applies valid positive values immediately. Invalid
@@ -275,6 +334,10 @@ normalised z is unchanged and its physical Z = z·Z₀ is re-derived.
 
 ## Known limitations
 
+- **Lossless lines with Z₀(line) = Z₀(system) only.** Lossy lines and lines with a different characteristic impedance are not modelled.
+- **Overlapping points.** When a line input sits exactly on its load (length 0 or a multiple of λ/2), the input is drawn on top. Select the load from the point list or its inspector link.
+- **Slider resolution.** The slider steps in 0.001λ. Use the numeric field for finer values.
+- **Only plotted points get "Add transmission line" in the UI.** The model already supports lines on derived points (chains).
 - **No pinch-zoom on touch screens.** Touch supports tap-to-create, dragging points and one-finger pan. Trackpad pinch works, because it arrives as ctrl+wheel. Two-finger touch pinch is not yet implemented.
 - **The grid doesn't adapt to zoom.** At high zoom the default grid becomes sparse. A grid whose density follows the zoom level is a later refinement.
 - **No undo.** Clear all asks for confirmation, but deleting a single point and moving points can't be undone yet.

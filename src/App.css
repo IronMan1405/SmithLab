@@ -160,8 +160,7 @@ button:disabled {
 .chart-hint {
   position: absolute;
   top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 16px;
   margin: 0;
   padding: 5px 12px;
   border-radius: 999px;
@@ -292,7 +291,10 @@ button.link {
 
 .kind-badge {
   display: inline-block;
-  margin: 10px 0 0;
+  margin: 0 0 0 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid var(--accent);
@@ -336,9 +338,9 @@ button.link {
 }
 .point-list li button {
   width: 100%;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
   padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -359,9 +361,11 @@ button.link {
 }
 .point-list .value {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shortcuts summary {
@@ -394,8 +398,185 @@ button.link {
   }
   .chart-hint {
     white-space: normal;
-    width: max-content;
-    max-width: 90%;
-    text-align: center;
+    max-width: calc(100% - 32px);
   }
+}
+
+/* ---- Milestone 3A: transmission lines ---- */
+
+.quantities-heading {
+  display: flex;
+  align-items: center;
+  margin: 16px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.quantities-heading button.link {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--point);
+}
+.inspector.derived .quantities dd {
+  color: var(--text);
+}
+.selected-swatch.diamond {
+  border-radius: 1px;
+  transform: rotate(45deg);
+  width: 9px;
+  height: 9px;
+}
+
+.operations {
+  margin-top: 12px;
+}
+button.primary {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--derived);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--derived);
+  font-weight: 600;
+}
+button.primary:hover {
+  background: color-mix(in srgb, var(--derived) 12%, transparent);
+}
+.derived-links {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+button.link {
+  color: var(--derived);
+  font-family: var(--font-mono);
+}
+.point-list button.link.danger,
+button.link.danger {
+  color: var(--danger);
+  font-family: inherit;
+}
+
+.line-controls {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--derived) 45%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--derived) 5%, transparent);
+  display: grid;
+  gap: 10px;
+}
+.line-controls-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.line-controls h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--derived);
+}
+.direction {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.direction.load {
+  color: var(--accent);
+}
+.length-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.length-row label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.length-input {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.length-input input {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  text-align: right;
+}
+.length-input input:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.length-input.invalid input {
+  border-color: var(--danger);
+  outline-color: var(--danger);
+}
+.length-input .unit {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+button.small {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.length-slider {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--derived);
+}
+.slider-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.line-meta {
+  margin: 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.line-controls button.danger {
+  justify-self: start;
+}
+
+.load-summary {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.point-list ul ul {
+  margin-top: 2px;
+}
+.point-list li button.derived .name {
+  font-weight: 500;
+  color: var(--derived);
+}
+.point-list li button.derived.selected .name {
+  color: var(--text);
+}
+.nest {
+  color: var(--text-muted);
 }

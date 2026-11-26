@@ -16,7 +16,7 @@
  *      y = −v · R          (SVG's y axis points down, so v is negated)
  *    with R = CHART_RADIUS. The origin Γ = 0 is at (0, 0) and the viewBox
  *    extends CHART_MARGIN beyond the unit circle on every side to leave room
- *    for boundary labels.
+ *    for boundary labels and the wavelength scales.
  *
  * 3. Screen (CSS pixel / client) coordinates
  *    The browser maps SVG user space to the screen via the <svg> element's
@@ -35,8 +35,11 @@ export interface Point {
 /** Radius of the unit circle in SVG user units. */
 export const CHART_RADIUS = 1000;
 
-/** Space around the unit circle reserved for labels, in SVG user units. */
-export const CHART_MARGIN = 120;
+/**
+ * Space around the unit circle reserved for boundary labels and the
+ * wavelength scales (out to |Γ| ≈ 1.32), in SVG user units.
+ */
+export const CHART_MARGIN = 330;
 
 export interface ViewBox {
   readonly minX: number;

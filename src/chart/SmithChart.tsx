@@ -9,11 +9,13 @@ import {
   viewBoxAttribute,
 } from '../geometry';
 import type { Gesture } from '../interaction/gestures';
-import type { PointQuantities, WorkspacePoint } from '../workspace';
+import type { PointQuantities, ResolvedPoint } from '../workspace';
 import { ChartGrid } from './ChartGrid';
 import { ChartLabels } from './ChartLabels';
 import { PointsLayer } from './PointsLayer';
 import { SelectionOverlay } from './SelectionOverlay';
+import { type LineVisual, TransmissionLineLayer } from './TransmissionLineLayer';
+import { WavelengthScale } from './WavelengthScale';
 import { shapeToPath } from './svg-path';
 import { type View, viewBoxOf } from './viewport';
 import './chart.css';
@@ -25,9 +27,13 @@ export interface SmithChartProps {
   readonly unitsPerPixel: number;
   readonly showImpedanceGrid: boolean;
   readonly showAdmittanceGrid: boolean;
-  readonly points: readonly WorkspacePoint[];
+  readonly showWavelengthScales: boolean;
+  readonly points: readonly ResolvedPoint[];
+  readonly lines: readonly LineVisual[];
   readonly selectedId: string | null;
   readonly selection: PointQuantities | null;
+  /** The selection is a line's load or input, whose |Γ| path is already drawn. */
+  readonly selectionOnLinePath: boolean;
   readonly gestureKind: Gesture['kind'];
   readonly onFocusPoint: (id: string) => void;
   readonly pointerHandlers: {
@@ -54,7 +60,7 @@ const LABELS = [...resistanceAxisLabels(), ...reactanceBoundaryLabels()];
  * Interaction is supplied from outside via `pointerHandlers` and `ref`.
  */
 export const SmithChart = memo(function SmithChart(props: SmithChartProps) {
-  const { ref, view, unitsPerPixel, points, selectedId, selection, gestureKind, pointerHandlers } = props;
+  const { ref, view, unitsPerPixel, points, lines, selectedId, selection, gestureKind, pointerHandlers } = props;
   const centerScale = 1 / view.zoom;
 
   return (
@@ -80,7 +86,15 @@ export const SmithChart = memo(function SmithChart(props: SmithChartProps) {
         {props.showAdmittanceGrid && <ChartGrid curves={ADMITTANCE_GRID} />}
         {props.showImpedanceGrid && <ChartGrid curves={IMPEDANCE_GRID} />}
         <path className="chart-axis" d={AXIS_PATH} />
-        {selection && <SelectionOverlay gamma={selection.gamma} z={selection.z} gammaMagnitude={selection.gammaMagnitude} />}
+        {selection && (
+          <SelectionOverlay
+            gamma={selection.gamma}
+            z={selection.z}
+            gammaMagnitude={selection.gammaMagnitude}
+            showVswrCircle={!props.selectionOnLinePath}
+          />
+        )}
+        {unitsPerPixel > 0 && <TransmissionLineLayer lines={lines} unitsPerPixel={unitsPerPixel} />}
       </g>
 
       <path className="chart-boundary" d={BOUNDARY_PATH} />
@@ -91,6 +105,7 @@ export const SmithChart = memo(function SmithChart(props: SmithChartProps) {
       </g>
 
       {props.showImpedanceGrid && <ChartLabels labels={LABELS} zoom={view.zoom} />}
+      {props.showWavelengthScales && <WavelengthScale zoom={view.zoom} />}
 
       {unitsPerPixel > 0 && (
         <PointsLayer points={points} selectedId={selectedId} unitsPerPixel={unitsPerPixel} onFocusPoint={props.onFocusPoint} />

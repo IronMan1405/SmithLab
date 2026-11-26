@@ -8,6 +8,8 @@ interface SelectionOverlayProps {
   /** Its normalised impedance (as derived by the workspace layer). */
   readonly z: Complex;
   readonly gammaMagnitude: number;
+  /** Omit the |Γ| circle when a transmission-line path already shows it. */
+  readonly showVswrCircle: boolean;
 }
 
 /**
@@ -15,9 +17,9 @@ interface SelectionOverlayProps {
  * the selected point. Degenerate cases (open circuit, matched load) simply
  * omit the curves that don't exist.
  */
-export function SelectionOverlay({ z, gammaMagnitude }: SelectionOverlayProps) {
+export function SelectionOverlay({ z, gammaMagnitude, showVswrCircle }: SelectionOverlayProps) {
   const curves: { key: string; className: string; shape: Shape }[] = [];
-  if (gammaMagnitude > 0 && gammaMagnitude < 1) {
+  if (showVswrCircle && gammaMagnitude > 0 && gammaMagnitude < 1) {
     curves.push({ key: 'vswr', className: 'selection-vswr', shape: reflectionMagnitudeCircle(gammaMagnitude) });
   }
   if (Number.isFinite(z.re) && z.re > 0) {

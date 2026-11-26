@@ -6,7 +6,7 @@
 import { type Complex, J, ONE, complex, reflectionFromImpedance } from '../core';
 import { DEFAULT_MAJOR_VALUES } from './grid';
 
-export type LabelRole = 'resistance' | 'reactance' | 'axis-end';
+export type LabelRole = 'resistance' | 'reactance' | 'axis-end' | 'wavelength-generator' | 'wavelength-load';
 
 export interface ChartLabel {
   readonly id: string;

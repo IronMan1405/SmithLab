@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { abs, complex } from '../src/core';
 import { DEFAULT_VIEW } from '../src/chart/viewport';
-import { NUDGE_STEP, commandForKey } from '../src/interaction/keyboard';
-import type { WorkspacePoint } from '../src/workspace';
+import { LENGTH_STEP, NUDGE_STEP, commandForKey } from '../src/interaction/keyboard';
+import type { ResolvedPoint } from '../src/workspace';
 import { expectComplexClose } from './helpers';
 
-const point: WorkspacePoint = { id: 'a', name: 'P1', gamma: complex(0.2, 0.2) };
+const point: ResolvedPoint = { id: 'a', name: 'P1', role: 'source', gamma: complex(0.2, 0.2), sourceId: null, transform: null };
+const input: ResolvedPoint = { id: 'd', name: 'P1 in', role: 'derived', gamma: complex(0.2, -0.2), sourceId: 'a', transform: { type: 'line', length: 0.125 } };
 const key = (k: string, shiftKey = false) => ({ key: k, shiftKey });
 
 describe('keyboard commands', () => {
@@ -25,10 +26,21 @@ describe('keyboard commands', () => {
   });
 
   it('nudging cannot leave the disc', () => {
-    const edge: WorkspacePoint = { ...point, gamma: complex(1, 0) };
+    const edge: ResolvedPoint = { ...point, gamma: complex(1, 0) };
     const right = commandForKey(key('ArrowRight', true), { selected: edge, view: DEFAULT_VIEW });
     if (right?.type !== 'move') throw new Error('expected move');
     expect(abs(right.gamma)).toBeLessThanOrEqual(1);
+  });
+
+  it('arrows on a line input change its length instead of moving it', () => {
+    expect(commandForKey(key('ArrowRight'), { selected: input, view: DEFAULT_VIEW })).toEqual({
+      type: 'line-length',
+      id: 'd',
+      length: 0.126,
+    });
+    const back = commandForKey(key('ArrowLeft', true), { selected: input, view: DEFAULT_VIEW });
+    expect(back?.type === 'line-length' && back.length).toBeCloseTo(0.125 - 10 * LENGTH_STEP, 12);
+    expect(commandForKey(key('Delete'), { selected: input, view: DEFAULT_VIEW })).toEqual({ type: 'delete', id: 'd' });
   });
 
   it('zoom keys and fit', () => {

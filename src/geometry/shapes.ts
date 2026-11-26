@@ -4,7 +4,10 @@
  *
  * Angles are mathematical: measured from +u, counter-clockwise positive.
  */
-import { type Complex, approxEqual, arg, isFiniteComplex, sub } from '../core';
+import { type Complex, approxEqual, arg, complex, isFiniteComplex, sub } from '../core';
+
+/** Γ = 0: centre of the chart and of every constant-|Γ| circle. */
+export const ZERO_CENTER: Complex = Object.freeze(complex(0, 0));
 
 export interface CircleGeometry {
   readonly center: Complex;

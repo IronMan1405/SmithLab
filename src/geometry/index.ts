@@ -5,3 +5,5 @@ export * from './admittance-circles';
 export * from './vswr-circles';
 export * from './grid';
 export * from './labels';
+export * from './transmission-line-paths';
+export * from './wavelength-scale';

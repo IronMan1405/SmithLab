@@ -136,3 +136,84 @@
 .point.selected .point-label {
   fill: var(--accent);
 }
+
+/* Derived points (transmission-line inputs) */
+.point.derived .point-dot {
+  fill: var(--derived) !important;
+  stroke: var(--chart-disc);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+.point.derived.selected .point-dot {
+  fill: var(--accent) !important;
+}
+.point.derived .point-label {
+  fill: var(--derived-label);
+}
+.point.derived.selected .point-label {
+  fill: var(--accent);
+}
+
+/* Transmission-line visuals */
+.line-layer {
+  pointer-events: none;
+}
+.line-path {
+  stroke: var(--derived);
+  stroke-width: 1px;
+  stroke-dasharray: 2 4;
+  opacity: 0.55;
+}
+.line-arc {
+  stroke: var(--derived);
+  stroke-width: 2.2px;
+  opacity: 0.75;
+}
+.line-arrow {
+  fill: var(--derived) !important;
+  stroke: none;
+  opacity: 0.85;
+}
+.line-visual.emphasized .line-path {
+  opacity: 0.9;
+}
+.line-visual.emphasized .line-arc {
+  stroke-width: 3px;
+  opacity: 1;
+}
+.line-visual.emphasized .line-arrow {
+  opacity: 1;
+}
+
+/* Wavelength scales */
+.wavelength-scale {
+  pointer-events: none;
+}
+.scale-ring,
+.scale-ticks {
+  stroke: var(--scale-tick);
+  stroke-width: 0.8px;
+}
+.scale-labels text,
+.scale-title {
+  font-family: var(--font-mono);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-linejoin: round;
+}
+.scale-labels.generator text {
+  fill: var(--scale-generator);
+}
+.scale-labels.load text {
+  fill: var(--scale-load);
+}
+.scale-title {
+  letter-spacing: 0.12em;
+  stroke-width: 0;
+}
+.scale-title.generator {
+  fill: var(--scale-generator);
+}
+.scale-title.load {
+  fill: var(--scale-load);
+}

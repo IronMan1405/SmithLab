@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react';
-import type { LoadKind, PointQuantities, WorkspacePoint } from '../workspace';
+import { type ReactNode, useEffect, useState } from 'react';
+import type { LoadKind, PointQuantities, ResolvedPoint } from '../workspace';
 import { formatComplex, formatNumber } from './format';
 
 interface PointInspectorProps {
-  readonly point: WorkspacePoint;
+  readonly point: ResolvedPoint;
   readonly quantities: PointQuantities;
   readonly z0: number;
+  /** Heading for the quantities block, e.g. "Load" or "Input". */
+  readonly quantitiesHeading: string;
+  /** Extra rows appended to the quantities list. */
+  readonly extraRows?: readonly (readonly [string, string, string?])[];
   readonly onRename: (name: string) => void;
-  readonly onDelete: () => void;
+  /** When given, a Delete button is shown in the header. */
+  readonly onDelete?: () => void;
+  readonly deleteTitle?: string;
+  /** Contextual controls shown between the header and the quantities. */
+  readonly children?: ReactNode;
+  /** Content shown after the quantities. */
+  readonly footer?: ReactNode;
 }
 
 const KIND_LABEL: Record<LoadKind, string | null> = {
@@ -46,38 +56,59 @@ function NameField({ name, onRename }: { name: string; onRename: (name: string) 
   );
 }
 
-export function PointInspector({ point, quantities: q, z0, onRename, onDelete }: PointInspectorProps) {
-  const kind = KIND_LABEL[q.kind];
+/** Standard rows for a point's electrical quantities (all values from the core engine). */
+export function quantityRows(q: PointQuantities, z0: number, subscript = ''): [string, string, string?][] {
   const phase = Number.isNaN(q.gammaPhaseDeg) ? '— (undefined at Γ = 0)' : `${formatNumber(q.gammaPhaseDeg)}°`;
-  const rows: readonly [string, string, string?][] = [
-    ['z', formatComplex(q.z), 'Normalised impedance r + jx'],
-    ['Z', `${formatComplex(q.impedance)} Ω`, `Physical impedance at Z₀ = ${formatNumber(z0)} Ω`],
-    ['Γ', formatComplex(q.gamma), 'Reflection coefficient'],
-    ['|Γ|', formatNumber(q.gammaMagnitude)],
-    ['∠Γ', phase],
+  return [
+    [`z${subscript}`, formatComplex(q.z), 'Normalised impedance r + jx'],
+    [`Z${subscript}`, `${formatComplex(q.impedance)} Ω`, `Physical impedance at Z₀ = ${formatNumber(z0)} Ω`],
+    [`Γ${subscript}`, formatComplex(q.gamma), 'Reflection coefficient'],
+    [`|Γ${subscript}|`, formatNumber(q.gammaMagnitude)],
+    [`∠Γ${subscript}`, phase],
     ['VSWR', formatNumber(q.vswr)],
     ['Return loss', `${formatNumber(q.returnLossDb)} dB`],
-    ['y', formatComplex(q.y), 'Normalised admittance g + jb'],
+    [`y${subscript}`, formatComplex(q.y), 'Normalised admittance g + jb'],
   ];
+}
+
+export function QuantityList({ rows }: { rows: readonly (readonly [string, string, string?])[] }) {
+  return (
+    <dl className="quantities">
+      {rows.map(([term, value, title]) => (
+        <div key={term} className="row" title={title}>
+          <dt>{term}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function PointInspector(props: PointInspectorProps) {
+  const { point, quantities: q, z0 } = props;
+  const kind = KIND_LABEL[q.kind];
+  const derived = point.role === 'derived';
+  const subscript = derived ? 'ᵢₙ' : '';
+  const rows = [...quantityRows(q, z0, subscript), ...(props.extraRows ?? [])];
 
   return (
-    <section className="inspector" aria-label={`Properties of ${point.name}`}>
+    <section className={derived ? 'inspector derived' : 'inspector'} aria-label={`Properties of ${point.name}`}>
       <div className="inspector-head">
-        <span className="selected-swatch" aria-hidden="true" />
-        <NameField name={point.name} onRename={onRename} />
-        <button type="button" className="danger" onClick={onDelete} title="Delete point (Delete)">
-          Delete
-        </button>
+        <span className={derived ? 'selected-swatch diamond' : 'selected-swatch'} aria-hidden="true" />
+        <NameField name={point.name} onRename={props.onRename} />
+        {props.onDelete && (
+          <button type="button" className="danger" onClick={props.onDelete} title={props.deleteTitle}>
+            Delete
+          </button>
+        )}
       </div>
-      {kind && <p className="kind-badge">{kind}</p>}
-      <dl className="quantities">
-        {rows.map(([term, value, title]) => (
-          <div key={term} className="row" title={title}>
-            <dt>{term}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
+      {props.children}
+      <h3 className="quantities-heading">
+        {props.quantitiesHeading}
+        {kind && <span className="kind-badge">{kind}</span>}
+      </h3>
+      <QuantityList rows={rows} />
+      {props.footer}
     </section>
   );
 }
