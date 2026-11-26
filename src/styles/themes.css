@@ -1,0 +1,71 @@
+/*
+ * Theme tokens. Components reference only these variables; to add a theme,
+ * add a [data-theme='name'] block defining the same set.
+ *
+ * Line weights are in CSS pixels and stay constant at any chart size
+ * (paths use vector-effect: non-scaling-stroke).
+ */
+
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --stroke-minor: 0.6px;
+  --stroke-major: 1.1px;
+  --stroke-axis: 1.2px;
+  --stroke-boundary: 1.8px;
+  --stroke-cursor: 1.4px;
+}
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f7f5f0;
+  --surface: #fdfcf9;
+  --border: #e2ded4;
+  --text: #22211e;
+  --text-muted: #6d695f;
+
+  --chart-disc: #fffefb;
+  --chart-boundary: #2b2925;
+  --chart-axis: #57524a;
+  --chart-center: #2b2925;
+  --chart-label: #34312c;
+  --chart-label-halo: #fffefb;
+
+  --grid-z-minor: #e3ded3;
+  --grid-z-major: #a8a196;
+  --grid-y-minor: #d3e4e1;
+  --grid-y-major: #6fa39c;
+
+  --accent: #c2410c;
+  --control-active: #22211e;
+  --control-active-text: #fdfcf9;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0f1114;
+  --surface: #15181c;
+  --border: #262b31;
+  --text: #d8dde3;
+  --text-muted: #8a939d;
+
+  --chart-disc: #13161a;
+  --chart-boundary: #d0d6dd;
+  --chart-axis: #8c96a1;
+  --chart-center: #e2e7ec;
+  --chart-label: #c9d1d9;
+  --chart-label-halo: #13161a;
+
+  --grid-z-minor: #2e353e;
+  --grid-z-major: #56616d;
+  --grid-y-minor: #213936;
+  --grid-y-major: #3f8a81;
+
+  --accent: #ff9e64;
+  --control-active: #d8dde3;
+  --control-active-text: #0f1114;
+}

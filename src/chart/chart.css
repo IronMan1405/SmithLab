@@ -1,0 +1,92 @@
+/* All colours and weights come from theme variables (src/styles/themes.css). */
+
+.smith-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  user-select: none;
+  touch-action: none;
+}
+
+.smith-chart path,
+.smith-chart circle {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+
+.chart-disc {
+  fill: var(--chart-disc) !important;
+  stroke: none;
+}
+
+.chart-boundary {
+  stroke: var(--chart-boundary);
+  stroke-width: var(--stroke-boundary);
+}
+
+.chart-axis {
+  stroke: var(--chart-axis);
+  stroke-width: var(--stroke-axis);
+}
+
+.grid-impedance.grid-minor {
+  stroke: var(--grid-z-minor);
+  stroke-width: var(--stroke-minor);
+}
+.grid-impedance.grid-major {
+  stroke: var(--grid-z-major);
+  stroke-width: var(--stroke-major);
+}
+.grid-admittance.grid-minor {
+  stroke: var(--grid-y-minor);
+  stroke-width: var(--stroke-minor);
+}
+.grid-admittance.grid-major {
+  stroke: var(--grid-y-major);
+  stroke-width: var(--stroke-major);
+}
+
+.center-ring {
+  stroke: var(--chart-center);
+  stroke-width: var(--stroke-major);
+}
+.center-dot {
+  fill: var(--chart-center) !important;
+  stroke: none;
+}
+
+.chart-label {
+  font-family: var(--font-mono);
+  font-size: 30px; /* SVG user units: scales with the chart */
+  fill: var(--chart-label);
+  paint-order: stroke;
+  stroke: var(--chart-label-halo);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.label-axis-end {
+  font-size: 36px;
+}
+
+.cursor-overlay {
+  pointer-events: none;
+}
+.cursor-curve {
+  stroke: var(--accent);
+  stroke-width: var(--stroke-cursor);
+  opacity: 0.85;
+}
+.cursor-vswr {
+  stroke: var(--accent);
+  stroke-width: var(--stroke-cursor);
+  stroke-dasharray: 4 4;
+  opacity: 0.6;
+}
+.cursor-point {
+  fill: var(--accent) !important;
+  stroke: var(--chart-disc);
+  stroke-width: 1.5px;
+}
