@@ -400,6 +400,18 @@ export function App() {
               onSelect={focusPoint}
               onInsertExample={insertExample}
               onInsertCurveExample={insertCurveExample}
+              onInsertText={(text) => {
+                const id = createPointId();
+                dispatch({ type: 'expression/add', id, text });
+              }}
+              onInsertSet={(set) => {
+                for (const line of set.lines) {
+                  const id = createPointId();
+                  dispatch({ type: 'expression/add', id, text: line.text });
+                  if (line.slider) dispatch({ type: 'expression/set-slider', id, slider: line.slider });
+                  if (line.hidden) dispatch({ type: 'expression/set-visible', id, visible: false });
+                }
+              }}
               onFocusHandled={() => setFocusExpressionId(null)}
             />
           </aside>

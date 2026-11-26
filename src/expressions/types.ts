@@ -175,6 +175,23 @@ const NAME_RULES: readonly (readonly [RegExp, DomainType])[] = [
   [/^l(?![a-z])/, 'length'],
 ];
 
+/**
+ * Human-readable form of NAME_RULES for the expression reference. The
+ * examples are checked against `declaredTypeForName` in the tests.
+ */
+export const NAMING_CONVENTION: readonly {
+  readonly prefix: string;
+  readonly type: DomainType;
+  readonly matches: readonly string[];
+  readonly nonMatches: readonly string[];
+}[] = [
+  { prefix: 'z', type: 'impedance', matches: ['z', 'zL', 'z1', 'z_in'], nonMatches: ['zeta', 'zin'] },
+  { prefix: 'y', type: 'admittance', matches: ['y', 'yL', 'y2'], nonMatches: ['yes'] },
+  { prefix: 'Z', type: 'physicalImpedance', matches: ['Z', 'ZL', 'Z_load'], nonMatches: ['Zeta'] },
+  { prefix: 'gamma, Γ', type: 'reflection', matches: ['gammaL', 'gamma_in', 'Γ', 'Γin'], nonMatches: ['gammas'] },
+  { prefix: 'l', type: 'length', matches: ['l', 'l1', 'lStub', 'l_zL'], nonMatches: ['loss', 'k'] },
+];
+
 export function declaredTypeForName(name: string): DomainType | null {
   for (const [pattern, type] of NAME_RULES) if (pattern.test(name)) return type;
   return null;

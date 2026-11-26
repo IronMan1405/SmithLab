@@ -541,6 +541,24 @@ The expression text is still the only stored state. A curve is recomputed throug
 - Computed points (`intersect(…)`, `1/zL`, …) are locked. Their cursor doesn't offer a drag, and the inspector explains why.
 - A drag that would need an infinite value (an impedance at Γ = 1) is ignored.
 
+### Built-in expression reference
+
+The **? Reference** button in the expression panel opens a collapsible reference covering:
+- names and the type-naming convention;
+- constants and complex literals;
+- operators and type rules;
+- the mathematical, RF, curve and query functions;
+- types, plotting and sliders;
+- practical example sets.
+
+Any example can be clicked to add it as an expression. "Add all" inserts a whole example set, and is disabled when its names are already in use. Escape or Close returns to the expressions.
+
+The reference is built from the live registries in `src/expressions/reference.ts`. Function names, signatures and descriptions come from `FUNCTIONS`/`CURVE_FUNCTIONS`, constants from `CONSTANTS`, and type names from `TYPE_INFO`. Only categories, return types and examples are added there. `tests/reference.test.ts` fails if:
+- a registry function is undocumented, or a documented one doesn't exist;
+- any example doesn't evaluate to its documented type;
+- an operator-rule or naming example misbehaves;
+- an example set produces an error.
+
 ### Workspace polish and constructions (Milestone 3C.1)
 
 **Admittance grid labels.** g and b labels appear whenever the admittance grid is on. They are generated with the core Γ_y mapping, so +b (capacitive) is labelled in the lower half. `chartLabels()` (`geometry/labels.ts`) places them so nothing overprints:

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   type EvaluationOutput,
   type ExpressionDef,
@@ -9,6 +9,8 @@ import {
   sliderLiteral,
 } from '../expressions';
 import { formatTypedValue } from './formatValue';
+import type { ExampleSet } from '../expressions';
+import { ExpressionReference } from './ExpressionReference';
 
 export interface ExpressionPanelActions {
   readonly onAdd: (afterId: string | null) => void;
@@ -21,6 +23,10 @@ export interface ExpressionPanelActions {
   readonly onSelect: (id: string) => void;
   readonly onInsertExample: () => void;
   readonly onInsertCurveExample: () => void;
+  /** Add one expression with the given text (from the reference). */
+  readonly onInsertText: (text: string) => void;
+  /** Add a whole example set (from the reference). */
+  readonly onInsertSet: (set: ExampleSet) => void;
   readonly onFocusHandled: () => void;
 }
 
@@ -39,13 +45,37 @@ interface ExpressionPanelProps extends ExpressionPanelActions {
 /** Desmos-style list of expressions. All evaluation happens in src/expressions. */
 export function ExpressionPanel(props: ExpressionPanelProps) {
   const { expressions, evaluation } = props;
+  const [showReference, setShowReference] = useState(false);
+
+  if (showReference) {
+    const taken = new Set([...evaluation.results.values()].map((r) => r.name).filter((n): n is string => n !== null));
+    return (
+      <ExpressionReference
+        takenNames={taken}
+        onInsert={props.onInsertText}
+        onInsertSet={props.onInsertSet}
+        onClose={() => setShowReference(false)}
+      />
+    );
+  }
+
   return (
     <section className="expression-panel" aria-label="Expressions">
       <div className="section-head">
         <h2>Expressions</h2>
-        <button type="button" className="link expr-link" onClick={() => props.onAdd(null)} title="Add an expression">
-          + Add
-        </button>
+        <div className="panel-actions">
+          <button
+            type="button"
+            className="link ref-toggle"
+            onClick={() => setShowReference(true)}
+            aria-label="Open the expression reference"
+          >
+            ? Reference
+          </button>
+          <button type="button" className="link expr-link" onClick={() => props.onAdd(null)} aria-label="Add an expression">
+            + Add
+          </button>
+        </div>
       </div>
       {expressions.length === 0 ? (
         <div className="expr-empty">
