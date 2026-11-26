@@ -10,6 +10,7 @@
 import {
   type Complex,
   abs,
+  arg,
   complex,
   fromPolar,
   reflectionFromAdmittance,
@@ -17,6 +18,7 @@ import {
   reflectionThroughLine,
 } from '../core';
 import { conductanceCurve, susceptanceCurve } from './admittance-circles';
+import { wavelengthsTowardGenerator, wavelengthsTowardLoad } from './wavelength-scale';
 import { reactanceCurve, resistanceCurve } from './impedance-circles';
 import type { Shape } from './shapes';
 import { lineTransformationArc } from './transmission-line-paths';
@@ -29,6 +31,7 @@ export type CurveKind =
   | 'conductanceCircle'
   | 'susceptanceCircle'
   | 'linePath'
+  | 'radialGuide'
   | 'parametric';
 
 /** What the parameter of `point(t)` means, for inspection. */
@@ -147,6 +150,39 @@ export function linePathCurve(gammaLoad: Complex, from: number, to: number): Cur
     shape: arc?.shape ?? null,
     parameter: { name: 'l', min: from, max: to, unit: 'λ' },
     point: (l) => reflectionThroughLine(gammaLoad, l),
+  };
+}
+
+/**
+ * Radial guide: the straight line from the chart centre through Γ to the
+ * unit circle, i.e. the ray of constant ∠Γ. Its segment ends exactly on the
+ * boundary, so it is clipped to the disc by construction. Parameterised by
+ * |Γ| along the ray, s ∈ [0, 1]. Undefined at the matched point (Γ = 0),
+ * where the angle has no meaning.
+ */
+export function radialGuideCurve(gamma: Complex): Curve {
+  const magnitude = abs(gamma);
+  if (!(magnitude > 0) || !Number.isFinite(magnitude)) {
+    throw new RangeError('A radial guide needs Γ ≠ 0: the angle is undefined at the matched point');
+  }
+  const angle = arg(gamma);
+  // Γ/|Γ| rather than e^(j∠Γ): exact on the axes and as precise as Γ itself.
+  const unit = complex(gamma.re / magnitude, gamma.im / magnitude);
+  const edge = unit;
+  const wtg = wavelengthsTowardGenerator(gamma);
+  const wtl = wavelengthsTowardLoad(gamma);
+  return {
+    kind: 'radialGuide',
+    label: 'radial guide',
+    properties: [
+      { label: '∠Γ', value: `${fmt((angle * 180) / Math.PI)}°` },
+      { label: '|Γ| at source', value: fmt(magnitude) },
+      { label: 'WTG', value: wtg === null ? '—' : `${fmt(wtg)}λ` },
+      { label: 'WTL', value: wtl === null ? '—' : `${fmt(wtl)}λ` },
+    ],
+    shape: { kind: 'segment', start: complex(0, 0), end: edge },
+    parameter: { name: '|Γ|', min: 0, max: 1, unit: '' },
+    point: (s) => (s < 0 || s > 1 ? null : complex(unit.re * s, unit.im * s)),
   };
 }
 

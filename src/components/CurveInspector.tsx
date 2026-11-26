@@ -6,7 +6,10 @@ import { QuantityList } from './PointInspector';
 
 export interface CurveIntersections {
   readonly otherId: string;
+  /** Expression name, if the other curve can be referenced in expressions. */
   readonly otherName: string | null;
+  /** Display label of the other curve. */
+  readonly otherLabel: string;
   readonly result: IntersectionResult;
 }
 
@@ -101,9 +104,9 @@ export function CurveInspector(props: CurveInspectorProps) {
         <p className="hint">No other visible curves.</p>
       ) : (
         <ul className="intersection-list">
-          {props.intersections.map(({ otherId, otherName, result }) => (
+          {props.intersections.map(({ otherId, otherName, otherLabel, result }) => (
             <li key={otherId}>
-              <div className="intersection-with">with {otherName ?? 'unnamed curve'}</div>
+              <div className="intersection-with">with {otherLabel}</div>
               {result.coincident && <p className="hint">The curves coincide.</p>}
               {!result.coincident && result.points.length === 0 && (
                 <p className="hint">
@@ -135,7 +138,11 @@ export function CurveInspector(props: CurveInspectorProps) {
                       type="button"
                       className="link expr-link"
                       disabled={!props.name || !otherName}
-                      title={props.name && otherName ? 'Add this intersection as a point expression' : 'Both curves need names to be referenced'}
+                      title={
+                        props.name && otherName
+                          ? 'Add this intersection as a point expression'
+                          : 'Only named expression curves can be referenced (use radial(…) for an expression guide)'
+                      }
                       onClick={() => otherName && props.onAddIntersectionPoint(otherName, i + 1)}
                     >
                       + point

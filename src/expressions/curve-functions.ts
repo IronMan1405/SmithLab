@@ -10,6 +10,7 @@
  *   bCircle(b | y)           constant-susceptance arc
  *   linePath(x, l)           line path from x over [0, l] wavelengths
  *   linePath(x, l0, l1)      line path over [l0, l1]
+ *   radial(x)                radial guide from the centre through a z/y/Γ/Z point
  *   intersect(c1, c2[, k])   k-th intersection (default 1), as a Γ point
  *   at(c, t)                 point of curve c at parameter t, as a Γ point
  */
@@ -19,6 +20,7 @@ import {
   conductanceCircleCurve,
   intersectCurves,
   linePathCurve,
+  radialGuideCurve,
   reactanceCircleCurve,
   resistanceCircleCurve,
   susceptanceCircleCurve,
@@ -115,6 +117,16 @@ export const CURVE_FUNCTIONS: Readonly<Record<string, CurveFunctionSpec>> = {
       if (!(from < to)) throw new TypeMismatch(`${name}() needs a non-empty length range (got ${from} to ${to})`);
       if (abs(gamma) > 1) throw new TypeMismatch(`${name}() needs a passive point, |Γ| ≤ 1`);
       return curve(linePathCurve(gamma, from, to));
+    },
+  },
+  radial: {
+    arity: [1],
+    signature: '(x)',
+    description: 'radial guide from the chart centre through a point to the boundary',
+    apply: ([v], ctx, name) => {
+      const gamma = toReflection(scalar(name, v!), ctx, name);
+      if (abs(gamma) > 1) throw new TypeMismatch(`${name}() needs a point on the chart, |Γ| ≤ 1`);
+      return curve(radialGuideCurve(gamma));
     },
   },
   intersect: {

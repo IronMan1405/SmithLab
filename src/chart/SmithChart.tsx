@@ -4,8 +4,7 @@ import {
   buildAdmittanceGrid,
   buildChartFrame,
   buildImpedanceGrid,
-  reactanceBoundaryLabels,
-  resistanceAxisLabels,
+  chartLabels,
   viewBoxAttribute,
 } from '../geometry';
 import type { Gesture } from '../interaction/gestures';
@@ -57,7 +56,12 @@ const BOUNDARY_PATH = shapeToPath(FRAME.boundary);
 const AXIS_PATH = shapeToPath(FRAME.realAxis);
 const IMPEDANCE_GRID = buildImpedanceGrid();
 const ADMITTANCE_GRID = buildAdmittanceGrid();
-const LABELS = [...resistanceAxisLabels(), ...reactanceBoundaryLabels()];
+// Labels for each grid combination, computed once.
+const LABELS = {
+  impedance: chartLabels({ impedance: true, admittance: false }),
+  admittance: chartLabels({ impedance: false, admittance: true }),
+  both: chartLabels({ impedance: true, admittance: true }),
+};
 
 /**
  * Pure renderer: draws the chart for a given view and set of points.
@@ -109,7 +113,18 @@ export const SmithChart = memo(function SmithChart(props: SmithChartProps) {
         <circle className="center-dot" cx={0} cy={0} r={3.5 * centerScale} />
       </g>
 
-      {props.showImpedanceGrid && <ChartLabels labels={LABELS} zoom={view.zoom} />}
+      {(props.showImpedanceGrid || props.showAdmittanceGrid) && (
+        <ChartLabels
+          labels={
+            props.showImpedanceGrid && props.showAdmittanceGrid
+              ? LABELS.both
+              : props.showImpedanceGrid
+                ? LABELS.impedance
+                : LABELS.admittance
+          }
+          zoom={view.zoom}
+        />
+      )}
       {props.showWavelengthScales && <WavelengthScale zoom={view.zoom} />}
 
       {unitsPerPixel > 0 && (

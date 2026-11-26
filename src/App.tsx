@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { CurveVisual } from './chart/CurvesLayer';
 import { type CurveIntersections, CurveInspector } from './components/CurveInspector';
+import { GuideInspector } from './components/GuideInspector';
 import { SmithChart } from './chart/SmithChart';
 import { DEFAULT_VIEW, type View, pixelsPerSvgUnit, zoomAbout } from './chart/viewport';
 import { HoverStatus } from './components/HoverStatus';
@@ -23,11 +24,13 @@ import {
   TYPE_INFO,
   evaluateExpressions,
   isDraggableExpression,
+  lineConstruction,
   plottedGamma,
   rewriteForDrag,
   withSliderValue,
 } from './expressions';
-import { intersectCurves } from './geometry';
+import { type Curve, intersectCurves, radialGuideCurve } from './geometry';
+import type { Complex } from './core';
 import type { ResolvedPoint } from './workspace';
 import {
   createPointId,
@@ -99,6 +102,34 @@ export function App() {
     return colors;
   }, [workspace.expressions, evaluation]);
 
+  // Current Γ of every point a guide can be attached to (including hidden expression points).
+  const gammaById = useMemo(() => {
+    const map = new Map<string, { gamma: Complex; name: string }>();
+    for (const p of resolved) map.set(p.id, { gamma: p.gamma, name: p.name });
+    for (const def of workspace.expressions) {
+      const r = evaluation.results.get(def.id);
+      const gamma = plottedGamma(r);
+      if (gamma && r) map.set(def.id, { gamma, name: r.name ?? def.text });
+    }
+    return map;
+  }, [resolved, workspace.expressions, evaluation]);
+
+  /** Radial guide geometry, derived from each guide's source (null when undefined, e.g. Γ = 0). */
+  const guideCurves = useMemo(() => {
+    const map = new Map<string, Curve | null>();
+    for (const g of workspace.guides) {
+      const source = gammaById.get(g.sourceId);
+      let curve: Curve | null = null;
+      try {
+        curve = source ? radialGuideCurve(source.gamma) : null;
+      } catch {
+        curve = null;
+      }
+      map.set(g.id, curve);
+    }
+    return map;
+  }, [workspace.guides, gammaById]);
+
   const curveVisuals = useMemo<CurveVisual[]>(() => {
     const result: CurveVisual[] = [];
     for (const def of workspace.expressions) {
@@ -106,8 +137,15 @@ export function App() {
       if (!curve || !def.visible) continue;
       result.push({ id: def.id, curve, color: curveColors.get(def.id) ?? 'teal', selected: workspace.selectedId === def.id });
     }
+    for (const g of workspace.guides) {
+      const curve = guideCurves.get(g.id);
+      if (!curve || !g.visible) continue;
+      result.push({ id: g.id, curve, color: 'guide', selected: workspace.selectedId === g.id, dashed: true });
+    }
     return result;
-  }, [workspace.expressions, workspace.selectedId, evaluation, curveColors]);
+  }, [workspace.expressions, workspace.guides, workspace.selectedId, evaluation, curveColors, guideCurves]);
+
+  const selectedGuide = workspace.guides.find((g) => g.id === workspace.selectedId) ?? null;
 
   const draggableIds = useMemo(
     () => new Set(expressionPoints.filter((p) => p.draggable).map((p) => p.id)),
@@ -139,9 +177,12 @@ export function App() {
       .map((c) => ({
         otherId: c.id,
         otherName: evaluation.results.get(c.id)?.name ?? null,
+        otherLabel: c.dashed
+          ? `radial guide (${gammaById.get(workspace.guides.find((g) => g.id === c.id)?.sourceId ?? '')?.name ?? '?'})`
+          : (evaluation.results.get(c.id)?.name ?? 'unnamed curve'),
         result: intersectCurves(selectedCurve.curve, c.curve),
       }));
-  }, [selectedCurve, curveVisuals, evaluation]);
+  }, [selectedCurve, curveVisuals, evaluation, gammaById, workspace.guides]);
 
   const intersectionMarks = useMemo(
     () =>
@@ -227,7 +268,7 @@ export function App() {
   }, []);
 
   const interaction = useChartInteraction({ svgRef, view, points: chartPoints, onCommand: applyCommand });
-  useKeyboardShortcuts({ selected, view }, applyCommand);
+  useKeyboardShortcuts({ selected, view, deletableId: selectedGuide?.id ?? null }, applyCommand);
 
   const focusPoint = useCallback((id: string) => dispatch({ type: 'point/select', id }), []);
 
@@ -249,6 +290,31 @@ export function App() {
       if (line.slider) dispatch({ type: 'expression/set-slider', id: ids[i]!, slider: line.slider });
     });
   }, []);
+
+  /** Add a transmission line to an expression point as new expressions (length + line()). */
+  const expressionLineFor = (id: string) => {
+    const result = evaluation.results.get(id);
+    if (!result?.value) return null;
+    const taken = new Set([...evaluation.results.values()].map((r) => r.name).filter((n): n is string => n !== null));
+    const construction = lineConstruction({ name: result.name, type: result.value.type }, taken);
+    const disabledReason = !result.name
+      ? 'Give this expression a name (e.g. zA = …) so a line can reference it.'
+      : !construction
+        ? 'A transmission line needs an impedance, admittance or reflection coefficient.'
+        : null;
+    return {
+      disabledReason,
+      onAdd: () => {
+        if (!construction) return;
+        const lengthId = createPointId();
+        const resultId = createPointId();
+        dispatch({ type: 'expression/add', id: lengthId, text: construction.lengthText, afterId: id });
+        dispatch({ type: 'expression/set-slider', id: lengthId, slider: construction.lengthSlider });
+        dispatch({ type: 'expression/add', id: resultId, text: construction.resultText, afterId: lengthId });
+        dispatch({ type: 'point/select', id: resultId });
+      },
+    };
+  };
 
   const insertCurveExample = useCallback(() => {
     const ids = CURVE_EXAMPLE.map(({ text }) => {
@@ -371,7 +437,17 @@ export function App() {
         </div>
 
         <aside className="sidebar">
-          {selectedCurve ? (
+          {selectedGuide ? (
+            <GuideInspector
+              key={selectedGuide.id}
+              sourceName={gammaById.get(selectedGuide.sourceId)?.name ?? 'its point'}
+              curve={guideCurves.get(selectedGuide.id) ?? null}
+              visible={selectedGuide.visible}
+              onSelectSource={() => focusPoint(selectedGuide.sourceId)}
+              onSetVisible={(visible) => dispatch({ type: 'guide/set-visible', id: selectedGuide.id, visible })}
+              onDelete={() => dispatch({ type: 'point/delete', id: selectedGuide.id })}
+            />
+          ) : selectedCurve ? (
             <CurveInspector
               key={selectedCurve.def.id}
               name={selectedCurve.result.name}
@@ -409,6 +485,8 @@ export function App() {
                 dispatch({ type: 'line/add', id: createPointId(), sourceId, length: NEW_LINE_LENGTH })
               }
               onSetLength={(id, length) => dispatch({ type: 'line/set-length', id, length })}
+              onAddGuide={(sourceId) => dispatch({ type: 'guide/add', id: createPointId(), sourceId })}
+              expressionLine={selected.role === 'expression' ? expressionLineFor(selected.id) : null}
             />
           ) : (
             <section className="inspector empty">

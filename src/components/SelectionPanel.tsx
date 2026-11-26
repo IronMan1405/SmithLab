@@ -31,6 +31,27 @@ interface SelectionPanelProps {
   readonly onDelete: (id: string) => void;
   readonly onAddLine: (sourceId: string) => void;
   readonly onSetLength: (id: string, length: number) => void;
+  readonly onAddGuide: (sourceId: string) => void;
+  /** Expression points: add a transmission line as new expressions (null reason = allowed). */
+  readonly expressionLine: { readonly onAdd: () => void; readonly disabledReason: string | null } | null;
+}
+
+/** "Radial guide" action plus links to the point's existing guides. */
+function GuideActions({ workspace, sourceId, onAdd, onSelect }: { workspace: WorkspaceState; sourceId: string; onAdd: () => void; onSelect: (id: string) => void }) {
+  const guides = workspace.guides.filter((g) => g.sourceId === sourceId);
+  return (
+    <div className="guide-actions">
+      <button type="button" className="secondary" onClick={onAdd} title="Line from the chart centre through this point to the boundary">
+        + Radial guide
+      </button>
+      {guides.map((g, i) => (
+        <button key={g.id} type="button" className="link guide-link" onClick={() => onSelect(g.id)}>
+          ↳ radial guide{guides.length > 1 ? ` ${i + 1}` : ''}
+          {g.visible ? '' : ' (hidden)'}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function wtg(point: ResolvedPoint): string {
@@ -59,6 +80,21 @@ export function SelectionPanel({ workspace, selected, expression, ...actions }: 
             </button>
           </div>
         )}
+        <div className="operations">
+          {actions.expressionLine && (
+            <button
+              type="button"
+              className="primary"
+              disabled={actions.expressionLine.disabledReason !== null}
+              title={actions.expressionLine.disabledReason ?? 'Adds a length variable (with slider) and a line() expression'}
+              onClick={actions.expressionLine.onAdd}
+            >
+              + Add transmission line
+            </button>
+          )}
+          {actions.expressionLine?.disabledReason && <p className="hint">{actions.expressionLine.disabledReason}</p>}
+          <GuideActions workspace={workspace} sourceId={selected.id} onAdd={() => actions.onAddGuide(selected.id)} onSelect={actions.onSelect} />
+        </div>
       </PointInspector>
     );
   }
@@ -92,6 +128,7 @@ export function SelectionPanel({ workspace, selected, expression, ...actions }: 
               ))}
             </ul>
           )}
+          <GuideActions workspace={workspace} sourceId={selected.id} onAdd={() => actions.onAddGuide(selected.id)} onSelect={actions.onSelect} />
         </div>
       </PointInspector>
     );
@@ -137,6 +174,9 @@ export function SelectionPanel({ workspace, selected, expression, ...actions }: 
         onChange={(value) => actions.onSetLength(selected.id, value)}
         onRemove={() => actions.onDelete(selected.id)}
       />
+      <div className="operations">
+        <GuideActions workspace={workspace} sourceId={selected.id} onAdd={() => actions.onAddGuide(selected.id)} onSelect={actions.onSelect} />
+      </div>
     </PointInspector>
   );
 }

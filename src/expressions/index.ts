@@ -9,3 +9,4 @@ export * from './plot';
 export * from './definitions';
 export * from './engine';
 export * from './drag';
+export * from './constructions';

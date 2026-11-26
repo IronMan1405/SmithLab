@@ -11,6 +11,8 @@ export interface CurveVisual {
   /** Palette key, styled by `--curve-<color>`. */
   readonly color: string;
   readonly selected: boolean;
+  /** Constructions such as radial guides are drawn dashed. */
+  readonly dashed?: boolean;
 }
 
 interface CurvesLayerProps {
@@ -30,7 +32,11 @@ export const CurvesLayer = memo(function CurvesLayer({ curves, unitsPerPixel }: 
         const d = curvePath(c.curve, unitsPerPixel);
         if (!d) return null;
         return (
-          <g key={c.id} className={c.selected ? 'curve selected' : 'curve'} style={{ color: `var(--curve-${c.color})` }}>
+          <g
+            key={c.id}
+            className={['curve', c.selected ? 'selected' : '', c.dashed ? 'dashed' : ''].join(' ').trim()}
+            style={{ color: `var(--curve-${c.color})` }}
+          >
             {c.selected && <path className="curve-halo" d={d} />}
             <path className="curve-stroke" d={d} />
             <path className="curve-hit" d={d} {...{ [CURVE_ID_ATTRIBUTE]: c.id }} />

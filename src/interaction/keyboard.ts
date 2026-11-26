@@ -28,6 +28,8 @@ export interface KeyInput {
 export interface KeyContext {
   readonly selected: ResolvedPoint | null;
   readonly view: View;
+  /** A selected non-point object (e.g. a radial guide) that Delete removes. */
+  readonly deletableId?: string | null;
 }
 
 /** Nudge step in Γ units at zoom 1; scaled by 1/zoom so it is constant on screen. */
@@ -68,7 +70,8 @@ export function commandForKey(input: KeyInput, ctx: KeyContext): KeyCommand | nu
   switch (key) {
     case 'Delete':
     case 'Backspace':
-      return editable ? { type: 'delete', id: editable.id } : null;
+      if (editable) return { type: 'delete', id: editable.id };
+      return ctx.deletableId ? { type: 'delete', id: ctx.deletableId } : null;
     case 'Escape':
       return selected ? { type: 'deselect' } : null;
     case '+':

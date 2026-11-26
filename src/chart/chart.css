@@ -59,6 +59,11 @@
   stroke: none;
 }
 
+.chart-label.label-conductance,
+.chart-label.label-susceptance {
+  fill: var(--chart-label-y);
+}
+
 .chart-label {
   font-family: var(--font-mono);
   fill: var(--chart-label);
@@ -250,6 +255,13 @@
 }
 .curves .curve.selected .curve-stroke {
   stroke-width: 3px;
+}
+.curves .curve.dashed .curve-stroke {
+  stroke-width: 1.4px;
+  stroke-dasharray: 6 4;
+}
+.curves .curve.dashed.selected .curve-stroke {
+  stroke-width: 2.2px;
 }
 .curves .curve-halo {
   stroke: currentColor;

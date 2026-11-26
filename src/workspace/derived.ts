@@ -136,3 +136,14 @@ export function dependentsOf(state: WorkspaceState, id: string): string[] {
 export function isRotationInvariant(gamma: Complex): boolean {
   return abs(gamma) === 0;
 }
+
+/**
+ * Radial guide construction attached to any point (plotted, derived or
+ * expression), by stable id. Its geometry is derived from the source's
+ * current Γ (`radialGuideCurve`); only the link and visibility are stored.
+ */
+export interface RadialGuide {
+  readonly id: string;
+  readonly sourceId: string;
+  readonly visible: boolean;
+}

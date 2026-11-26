@@ -27,7 +27,15 @@
  */
 import { type Complex, DEFAULT_Z0, assertComplex, assertReferenceImpedance } from '../core';
 import { CURVE_COLORS, type CurveColor, type ExpressionDef, type SliderSpec, assertSlider, createExpressionDef } from '../expressions';
-import { type DerivedPoint, dependentsOf, findDerived, pointExists, resolveGamma, transformTowards } from './derived';
+import {
+  type DerivedPoint,
+  type RadialGuide,
+  dependentsOf,
+  findDerived,
+  pointExists,
+  resolveGamma,
+  transformTowards,
+} from './derived';
 import { clampToDisc } from './disc';
 
 export interface WorkspacePoint {
@@ -43,6 +51,8 @@ export interface WorkspaceState {
   readonly derived: readonly DerivedPoint[];
   /** Expressions, in panel order. */
   readonly expressions: readonly ExpressionDef[];
+  /** Radial guides attached to points or expressions. */
+  readonly guides: readonly RadialGuide[];
   readonly selectedId: string | null;
   readonly z0: number;
   /** Next number used for default names (P1, P2, …). Never reused. */
@@ -70,6 +80,8 @@ export type WorkspaceAction =
   | { readonly type: 'expression/set-visible'; readonly id: string; readonly visible: boolean }
   | { readonly type: 'expression/set-slider'; readonly id: string; readonly slider: SliderSpec | null }
   | { readonly type: 'expression/set-color'; readonly id: string; readonly color: CurveColor | null }
+  | { readonly type: 'guide/add'; readonly id: string; readonly sourceId: string }
+  | { readonly type: 'guide/set-visible'; readonly id: string; readonly visible: boolean }
   | { readonly type: 'points/clear' }
   | { readonly type: 'z0/set'; readonly z0: number };
 
@@ -77,7 +89,7 @@ export const MAX_NAME_LENGTH = 40;
 
 export function createWorkspace(z0: number = DEFAULT_Z0): WorkspaceState {
   assertReferenceImpedance(z0);
-  return { points: [], derived: [], expressions: [], selectedId: null, z0, nextNumber: 1 };
+  return { points: [], derived: [], expressions: [], guides: [], selectedId: null, z0, nextNumber: 1 };
 }
 
 function normalizeName(name: string): string {
@@ -109,7 +121,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return changed ? { ...state, points } : state;
     }
     case 'point/select': {
-      if (action.id !== null && !pointExists(state, action.id) && !expressionExists(state, action.id)) return state;
+      if (action.id !== null && !idInUse(state, action.id)) return state;
       return state.selectedId === action.id ? state : { ...state, selectedId: action.id };
     }
     case 'point/rename': {
@@ -122,16 +134,35 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       };
     }
     case 'point/delete': {
+      if (guideExists(state, action.id)) {
+        return withoutGuides(state, new Set([action.id]));
+      }
       if (!pointExists(state, action.id)) return state;
-      // Deleting a point also deletes everything derived from it.
+      // Deleting a point also deletes everything derived from it, and their guides.
       const removed = new Set([action.id, ...dependentsOf(state, action.id)]);
+      return withoutGuidesOf(
+        {
+          ...state,
+          points: state.points.filter((p) => !removed.has(p.id)),
+          derived: state.derived.filter((p) => !removed.has(p.id)),
+          selectedId: state.selectedId !== null && removed.has(state.selectedId) ? null : state.selectedId,
+        },
+        removed,
+      );
+    }
+    case 'guide/add': {
+      if (idInUse(state, action.id)) throw new Error(`Duplicate id "${action.id}"`);
+      if (!pointExists(state, action.sourceId) && !expressionExists(state, action.sourceId)) {
+        throw new Error(`Unknown source "${action.sourceId}"`);
+      }
+      const guide: RadialGuide = { id: action.id, sourceId: action.sourceId, visible: true };
+      return { ...state, guides: [...state.guides, guide], selectedId: guide.id };
+    }
+    case 'guide/set-visible':
       return {
         ...state,
-        points: state.points.filter((p) => !removed.has(p.id)),
-        derived: state.derived.filter((p) => !removed.has(p.id)),
-        selectedId: state.selectedId !== null && removed.has(state.selectedId) ? null : state.selectedId,
+        guides: state.guides.map((g) => (g.id === action.id && g.visible !== action.visible ? { ...g, visible: action.visible } : g)),
       };
-    }
     case 'line/add': {
       assertLength(action.length);
       if (idInUse(state, action.id)) throw new Error(`Duplicate point id "${action.id}"`);
@@ -152,9 +183,12 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return replaceDerived(state, { ...target, transform: { type: 'line', length: action.length } });
     }
     case 'points/clear': {
-      // Clears plotted and derived points only; expressions are kept.
-      const keepSelection = state.selectedId !== null && expressionExists(state, state.selectedId);
-      return { ...state, points: [], derived: [], selectedId: keepSelection ? state.selectedId : null };
+      // Clears plotted and derived points (and their guides); expressions are kept.
+      const removed = new Set([...state.points.map((p) => p.id), ...state.derived.map((p) => p.id)]);
+      const cleared = withoutGuidesOf({ ...state, points: [], derived: [] }, removed);
+      const keep =
+        cleared.selectedId !== null && (expressionExists(cleared, cleared.selectedId) || guideExists(cleared, cleared.selectedId));
+      return { ...cleared, selectedId: keep ? cleared.selectedId : null };
     }
     case 'expression/add': {
       if (idInUse(state, action.id)) throw new Error(`Duplicate id "${action.id}"`);
@@ -180,11 +214,14 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       return updateExpression(state, action.id, (e) => (e.color === action.color ? e : { ...e, color: action.color }));
     case 'expression/remove': {
       if (!expressionExists(state, action.id)) return state;
-      return {
-        ...state,
-        expressions: state.expressions.filter((e) => e.id !== action.id),
-        selectedId: state.selectedId === action.id ? null : state.selectedId,
-      };
+      return withoutGuidesOf(
+        {
+          ...state,
+          expressions: state.expressions.filter((e) => e.id !== action.id),
+          selectedId: state.selectedId === action.id ? null : state.selectedId,
+        },
+        new Set([action.id]),
+      );
     }
     case 'z0/set':
       assertReferenceImpedance(action.z0);
@@ -207,8 +244,26 @@ export function expressionExists(state: WorkspaceState, id: string): boolean {
   return state.expressions.some((e) => e.id === id);
 }
 
+export function guideExists(state: WorkspaceState, id: string): boolean {
+  return state.guides.some((g) => g.id === id);
+}
+
 function idInUse(state: WorkspaceState, id: string): boolean {
-  return pointExists(state, id) || expressionExists(state, id);
+  return pointExists(state, id) || expressionExists(state, id) || guideExists(state, id);
+}
+
+function withoutGuides(state: WorkspaceState, ids: ReadonlySet<string>): WorkspaceState {
+  if (!state.guides.some((g) => ids.has(g.id))) return state;
+  return {
+    ...state,
+    guides: state.guides.filter((g) => !ids.has(g.id)),
+    selectedId: state.selectedId !== null && ids.has(state.selectedId) ? null : state.selectedId,
+  };
+}
+
+/** Remove guides whose source is one of `sourceIds`. */
+function withoutGuidesOf(state: WorkspaceState, sourceIds: ReadonlySet<string>): WorkspaceState {
+  return withoutGuides(state, new Set(state.guides.filter((g) => sourceIds.has(g.sourceId)).map((g) => g.id)));
 }
 
 function updateExpression(state: WorkspaceState, id: string, fn: (e: ExpressionDef) => ExpressionDef): WorkspaceState {

@@ -950,3 +950,44 @@ button.expr-link {
   grid-area: add;
   align-self: center;
 }
+
+/* ---- Milestone 3C.1: constructions ---- */
+.operations {
+  display: grid;
+  gap: 6px;
+}
+.guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+button.secondary {
+  padding: 4px 10px;
+  border: 1px dashed var(--curve-guide);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+button.secondary:hover {
+  border-style: solid;
+}
+button.link.guide-link {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.guide-swatch {
+  width: 18px;
+  height: 0;
+  flex-shrink: 0;
+  border-top: 2px dashed var(--curve-guide);
+}
+.guide-inspector .name-static {
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+.guide-visible {
+  margin-top: 10px;
+}

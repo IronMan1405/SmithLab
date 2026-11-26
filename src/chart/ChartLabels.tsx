@@ -29,7 +29,8 @@ export const ChartLabels = memo(function ChartLabels({ labels, zoom }: ChartLabe
     <g className="labels">
       {labels.map((label) => {
         const base = gammaToSvg(label.anchor);
-        const gap = (label.role === 'resistance' ? AXIS_GAP : BOUNDARY_GAP) / zoom;
+        const onAxis = label.role === 'resistance' || label.role === 'conductance';
+        const gap = (onAxis ? AXIS_GAP : BOUNDARY_GAP) / zoom;
         // Direction is a Γ-plane vector: flip its imaginary part for SVG.
         const x = base.x + label.direction.re * gap;
         const y = base.y - label.direction.im * gap;

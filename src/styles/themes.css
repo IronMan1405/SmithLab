@@ -38,6 +38,7 @@
   --grid-z-major: #a8a196;
   --grid-y-minor: #d3e4e1;
   --grid-y-major: #6fa39c;
+  --chart-label-y: #2f6f68;
 
   --accent: #c2410c;
   --point: #1f5f8b;
@@ -60,6 +61,7 @@
   --curve-blue: #1d4ed8;
   --curve-pink: #be185d;
   --curve-green: #15803d;
+  --curve-guide: #57524a;
   --control-active: #22211e;
   --control-active-text: #fdfcf9;
 }
@@ -84,6 +86,7 @@
   --grid-z-major: #56616d;
   --grid-y-minor: #213936;
   --grid-y-major: #3f8a81;
+  --chart-label-y: #7fd1c6;
 
   --accent: #ff9e64;
   --point: #7cc4f2;
@@ -106,6 +109,7 @@
   --curve-blue: #93c5fd;
   --curve-pink: #f9a8d4;
   --curve-green: #86efac;
+  --curve-guide: #c9d1d9;
   --control-active: #d8dde3;
   --control-active-text: #0f1114;
 }

@@ -541,6 +541,39 @@ The expression text is still the only stored state. A curve is recomputed throug
 - Computed points (`intersect(…)`, `1/zL`, …) are locked. Their cursor doesn't offer a drag, and the inspector explains why.
 - A drag that would need an infinite value (an impedance at Γ = 1) is ignored.
 
+### Workspace polish and constructions (Milestone 3C.1)
+
+**Admittance grid labels.** g and b labels appear whenever the admittance grid is on. They are generated with the core Γ_y mapping, so +b (capacitive) is labelled in the lower half. `chartLabels()` (`geometry/labels.ts`) places them so nothing overprints:
+
+| Grids shown | Real axis | Boundary | Axis ends |
+|---|---|---|---|
+| Impedance only | r above | x outside | 0 / ∞ |
+| Admittance only | g above | b outside | ∞ (short, left) / 0 (open, right) |
+| Both | r above, g below | x outside, b inside | labelled once |
+
+When both grids are on, admittance labels use the admittance colour. This placement is needed because the admittance grid is the impedance grid rotated by 180°: g = 0.2 sits exactly on r = 5, and b = 0.5 exactly on x = −2.
+
+**Transmission line on an expression point.**
+- A named expression point (z, y, Γ or Z) has **+ Add transmission line**. It inserts, right after the source:
+  - `l_zL = 0.125`, with a 0–0.5λ slider;
+  - `zL_in = line(zL, l_zL)`.
+- The text comes from `lineConstruction()` (`expressions/constructions.ts`) and uses the existing `line()` function, so there is no second copy of the line mathematics.
+- The result keeps the source's name prefix, so it agrees with the naming convention and with `line()` keeping the type.
+- Unnamed sources and non-chart types get an explanation instead of invalid text.
+- The source expression is not modified. The result is itself a point that can take another line or a guide.
+
+**Radial guides.**
+- A radial guide is the straight line from the chart centre through a point to the unit circle: the ray of constant ∠Γ.
+- `radialGuideCurve(Γ)` (`geometry/curves.ts`) is an exact segment from 0 to Γ/|Γ|, so it ends exactly on the boundary.
+- Its properties are ∠Γ, |Γ| at the source, and the WTG and WTL readings. It is undefined at Γ = 0.
+- Any point (plotted, line input or expression) has **+ Radial guide**, which creates a workspace construction `{ id, sourceId, visible }`.
+  - Its geometry is derived from the source's current Γ, so it follows drags, line-length changes and expression edits.
+  - It is deleted together with its source.
+  - Guides render as dashed curves through the curves layer, so they are selectable on the chart, inspectable, hideable, deletable (Delete key or button), and correct under pan and zoom.
+- In expressions, the same geometry is available as `radial(x)`.
+
+**Math input editor.** No library was integrated. See `docs/math-input-editor-evaluation.md`. The recommendation is to keep the text editor, add a read-only typeset view, and later consider MathLive.
+
 ### Characteristic impedance
 
 The Z₀ field in the toolbar applies valid positive values immediately. Invalid
@@ -552,6 +585,8 @@ normalised z is unchanged and its physical Z = z·Z₀ is re-derived.
 
 ## Known limitations
 
+- **Radial guides can't be referenced in expressions.** Guides attached to manual points are workspace constructions, so their intersections can be inspected but not turned into `intersect()` expressions. Use `radial(x)` on an expression point when an expression-level guide is needed.
+- **Admittance labels are smaller when both grids are on.** With both grids enabled they sit inside the boundary and can be dense at small chart sizes.
 - **Only literal expression points are draggable.** Points computed from other expressions are locked, by design.
 - **No tangency detection for generic curves.** Tangencies are detected only between exact curves. A generic curve that just touches another curve may be missed or reported as a crossing.
 - **Intersections are pairwise.** They are listed for the selected curve against each other visible curve, and there is no "all intersections" overlay. Two generic curves are intersected numerically, at a cost that grows with the product of their sample counts.
