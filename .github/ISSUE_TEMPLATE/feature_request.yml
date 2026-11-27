@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest a function, construction or improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: task
+    attributes:
+      label: What are you trying to do?
+      description: The RF or mathematical task, and why the current tools make it hard.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How it could work. If it is a function, sketch its signature, argument types and result type.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example expressions
+      description: How you would like to write it.
+      render: text
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you have tried, for example composing existing functions.

@@ -1,9 +1,21 @@
 {
   "name": "smithlab",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.9.0",
   "type": "module",
-  "description": "SmithLab — an interactive, freeform Smith Chart workspace.",
+  "description": "An interactive, expression-driven Smith Chart workspace: typed impedance algebra, exact chart geometry, and live RF constructions in the browser.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IronMan1405/SmithLab.git"
+  },
+  "homepage": "https://github.com/IronMan1405/SmithLab#readme",
+  "bugs": {
+    "url": "https://github.com/IronMan1405/SmithLab/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -22,6 +34,6 @@
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "~5.7",
     "vite": "^6.4.6",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.12"
   }
 }

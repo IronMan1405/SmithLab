@@ -34,7 +34,7 @@ The registry data comes from `npm view` on 2026-11-27.
 ## Evaluation against SmithLab's needs
 
 **Maintenance and compatibility.**
-- MathQuill's main package is effectively unmaintained and drags in jQuery 1.x. Its forks are community-maintained, and Desmos maintains its own private fork.
+- MathQuill's main package is effectively unmaintained and drags in jQuery 1.x. Its public forks are community-maintained.
 - MathLive is actively released and dependency-free. It also works as a standard custom element, which fits React 19 without a wrapper.
 
 **Licence.**
