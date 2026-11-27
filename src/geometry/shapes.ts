@@ -81,3 +81,45 @@ export function assertRange(from: number, to: number, name: string): void {
     throw new RangeError(`${name} range must satisfy from < to (got [${from}, ${to}])`);
   }
 }
+
+/**
+ * e^(jθ), exact at multiples of π/2 (so a half-turn maps Γ to exactly −Γ).
+ */
+export function unitPhasor(theta: number): Complex {
+  if (!Number.isFinite(theta)) throw new RangeError(`Rotation angle must be finite (got ${theta})`);
+  const quarters = theta / (Math.PI / 2);
+  const k = Math.round(quarters);
+  if (Math.abs(quarters - k) < 1e-12) {
+    const q = ((k % 4) + 4) % 4;
+    return [complex(1, 0), complex(0, 1), complex(-1, 0), complex(0, -1)][q]!;
+  }
+  return complex(Math.cos(theta), Math.sin(theta));
+}
+
+/** Rotate a Γ-plane point about Γ = 0 by multiplying with a unit phasor (no signed zeros). */
+export function rotatePoint(p: Complex, phasor: Complex): Complex {
+  return complex(p.re * phasor.re - p.im * phasor.im + 0, p.re * phasor.im + p.im * phasor.re + 0);
+}
+
+/**
+ * Exact rotation of a shape about Γ = 0 by θ radians. Circles stay circles,
+ * arcs keep their radius, sweep (so their direction of travel) and extent,
+ * segments keep their length; nothing is resampled.
+ */
+export function rotateShape(shape: Shape, theta: number): Shape {
+  const ph = unitPhasor(theta);
+  switch (shape.kind) {
+    case 'circle':
+      return { ...shape, center: rotatePoint(shape.center, ph) };
+    case 'arc':
+      return {
+        ...shape,
+        center: rotatePoint(shape.center, ph),
+        start: rotatePoint(shape.start, ph),
+        end: rotatePoint(shape.end, ph),
+        startAngle: shape.startAngle + theta,
+      };
+    case 'segment':
+      return { ...shape, start: rotatePoint(shape.start, ph), end: rotatePoint(shape.end, ph) };
+  }
+}

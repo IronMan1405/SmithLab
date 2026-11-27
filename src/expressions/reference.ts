@@ -70,9 +70,20 @@ export const FUNCTION_META: Readonly<Record<string, FunctionMeta>> = {
   bCircle: { category: 'curve', returns: 'curve (parameter: g)', example: 'bCircle(0.5)', exampleType: 'curve' },
   linePath: { category: 'curve', returns: 'curve (parameter: l)', example: 'linePath(z(2), 0.25)', exampleType: 'curve' },
   radial: { category: 'curve', returns: 'curve (parameter: |Γ|, 0–1)', example: 'radial(z(0.5 + j1.2))', exampleType: 'curve' },
+  rotate: { category: 'curve', returns: 'curve (same parameter as c)', example: 'rotate(gCircle(1), -4*pi*0.1)', exampleType: 'curve' },
   // queries
-  intersect: { category: 'query', returns: T('reflection'), example: 'intersect(rCircle(0.5), xCircle(1.2), 1)', exampleType: 'reflection' },
-  at: { category: 'query', returns: T('reflection'), example: 'at(vswrCircle(3), 0.125)', exampleType: 'reflection' },
+  intersect: {
+    category: 'query',
+    returns: 'z or y for impedance/admittance curves, Γ for Γ curves',
+    example: 'intersect(rCircle(0.5), xCircle(1.2), 1)',
+    exampleType: 'impedance',
+  },
+  at: {
+    category: 'query',
+    returns: 'z or y for impedance/admittance curves, Γ for Γ curves',
+    example: 'at(vswrCircle(3), 0.125)',
+    exampleType: 'reflection',
+  },
 };
 
 export interface ReferenceFunction {
@@ -180,7 +191,8 @@ export const OPERATOR_RULES: readonly {
   { expression: '1/yA', given: ['yA = 0.5 - j0.5'], result: 'impedance', note: 'reciprocal of y is z' },
   { expression: 'zA/zB', given: ['zA = 1 + j', 'zB = 2'], result: 'complex', note: 'a ratio has no RF type' },
   { expression: 'gammaA * exp(-j*pi/2)', given: ['gammaA = 0.5'], result: 'reflection', note: 'rotating Γ keeps it a Γ' },
-  { expression: 'lA * 2', given: ['lA = 0.1'], result: 'length', note: 'scaling a length' },
+  { expression: 'lA * 2', given: ['lA = 0.1'], result: 'real', note: 'a multiple of a length is a plain number (name it l… to keep it a length)' },
+  { expression: 'lA + 0.05', given: ['lA = 0.1'], result: 'length', note: 'adding lengths' },
   { expression: '-j*4*pi*lA', given: ['lA = 0.1'], result: 'complex', note: 'a phase, not a length' },
   { expression: 'zA + yA', given: ['zA = 1 + j', 'yA = 1'], result: 'error', note: 'impedance + admittance is rejected' },
   { expression: 'ZA + 1', given: ['ZA = 50'], result: 'error', note: 'Ω + dimensionless is rejected' },
@@ -218,7 +230,7 @@ export const EXAMPLE_SETS: readonly ExampleSet[] = [
   {
     id: 'conversions',
     title: 'One load, four views',
-    summary: 'z, y, Γ and Z of the same load plot at the same place.',
+    summary: 'In impedance mode y sits opposite z (its number on the Z grid); switch to admittance mode to flip.',
     lines: [{ text: 'zB = 1 + j1' }, { text: 'yB = 1/zB' }, { text: 'gammaB = gamma(zB)' }, { text: 'ZB = Z(zB)' }],
   },
   {

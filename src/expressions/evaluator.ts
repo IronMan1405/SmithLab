@@ -11,7 +11,7 @@ import { add, complex, div, isNaNComplex, mul, neg, sub, type Complex, abs, arg,
 import { parametricCurve } from '../geometry/curves';
 import type { Node, Span } from './ast';
 import { CURVE_FUNCTIONS } from './curve-functions';
-import { CONSTANTS, FUNCTIONS, type FunctionContext, isReservedName, toReflection } from './functions';
+import { CONSTANTS, FUNCTIONS, type FunctionContext, canonicalPosition, frameOfType, isReservedName } from './functions';
 import { type BinaryOp, type TypedValue, type Value, TYPE_INFO, TypeMismatch, binaryResultType, isCurve, plainType } from './types';
 
 export type ErrorKind = 'syntax' | 'reference' | 'dependency' | 'cycle' | 'type' | 'math' | 'name';
@@ -114,7 +114,9 @@ function evalNode(node: Node, ctx: EvaluationContext): Value {
       return withSpan(node.span, () => {
         const resultType = binaryResultType(node.op, left.type, right.type, right.type === 'real', left.type === 'real');
         const value = compute(node.op, left.value, right.value);
-        const type = resultType === 'plain' ? plainType(value, left.type === 'real' && right.type === 'real') : resultType;
+        // Lengths are real-valued, so a multiple of a length is a real number.
+        const realValued = (t: string) => t === 'real' || t === 'length';
+        const type = resultType === 'plain' ? plainType(value, realValued(left.type) && realValued(right.type)) : resultType;
         return checked({ type, value }, node.span);
       });
     }
@@ -191,7 +193,7 @@ function parametric(node: Extract<Node, { kind: 'call' }>, ctx: EvaluationContex
       if (isCurve(v)) throw new EvaluationError('type', 'curve() cannot produce a curve of curves', body.span);
       if (!TYPE_INFO[v.type].plottable) throw new EvaluationError('type', `${PLOTTABLE_HINT} (got a ${TYPE_INFO[v.type].label})`, body.span);
       sampleType = v.type;
-      toReflection(v, ctx, 'curve'); // records a Z₀ dependency for physical impedances
+      canonicalPosition(v, ctx, 'curve'); // records a Z₀ dependency for physical impedances
       break;
     } catch (error) {
       if (error instanceof EvaluationError && error.kind === 'math') continue;
@@ -202,15 +204,20 @@ function parametric(node: Extract<Node, { kind: 'call' }>, ctx: EvaluationContex
   if (!sampleType) throw new EvaluationError('math', 'curve() is undefined over the whole interval', node.span);
 
   const type = sampleType;
+  // z/y/Z bodies make a number curve (canonical C_Z coordinates); Γ bodies a plane curve.
+  const frameInfo = frameOfType(type);
   const point = (t: number): Complex | null => {
     try {
       const v = at(t);
       if (isCurve(v) || v.type !== type) return null;
-      const g = toReflection(v, ctx, 'curve');
+      const g = canonicalPosition(v, ctx, 'curve').position;
       return Number.isFinite(g.re) && Number.isFinite(g.im) ? g : null;
     } catch {
       return null; // singular point
     }
   };
-  return { type: 'curve', curve: parametricCurve(point, param.name, t0, t1, [{ label: 'of', value: TYPE_INFO[type].label }]) };
+  return {
+    type: 'curve',
+    curve: parametricCurve(point, param.name, t0, t1, [{ label: 'of', value: TYPE_INFO[type].label }], frameInfo.frame, frameInfo.domain),
+  };
 }

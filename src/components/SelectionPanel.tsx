@@ -61,7 +61,8 @@ function wtg(point: ResolvedPoint): string {
 
 /** Contextual property panel for the selected point (plotted load or line input). */
 export function SelectionPanel({ workspace, selected, expression, ...actions }: SelectionPanelProps) {
-  const quantities = pointQuantities(selected.gamma, workspace.z0);
+  // Readouts describe the load the point represents (physical Γ), not where it is drawn.
+  const quantities = pointQuantities(selected.physicalGamma ?? selected.gamma, workspace.z0);
 
   if (selected.role === 'expression') {
     return (

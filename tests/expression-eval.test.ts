@@ -119,7 +119,9 @@ describe('RF types', () => {
     expect(value('zL = 1 + j', 'zL/zL').type).toBe('complex');
     expect(value('zA = 1 + j', 'zB = 2', 'zA + zB').type).toBe('impedance'); // series combination
     expect(value('gammaL = 0.5', 'gammaL * exp(-j*pi)').type).toBe('reflection');
-    expect(value('l = 0.1', 'l * 2').type).toBe('length');
+    expect(value('l = 0.1', 'l * 2').type).toBe('real'); // a multiple of a length is a plain number…
+    expect(value('l = 0.1', 'l2 = l * 2').type).toBe('length'); // …until named l…
+    expect(value('l = 0.1', '-4*pi*l').type).toBe('real'); // e.g. an angle for rotate()
     expect(value('l = 0.1', '-j*4*pi*l').type).toBe('complex');
     expect(value('ZL = 100', 'ZL / 2').type).toBe('physicalImpedance');
   });

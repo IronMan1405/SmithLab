@@ -16,6 +16,7 @@ import {
   plottedGamma,
   withSliderValue,
 } from '../src/expressions';
+import { displayCurve } from '../src/geometry';
 import { expectComplexClose } from './helpers';
 
 let n = 0;
@@ -279,11 +280,15 @@ describe('reactivity and evaluation', () => {
     }
   });
 
-  it('shunt sweeps trace the constant-g circle', () => {
+  it('shunt sweeps trace the constant-g circle (drawn on the admittance grid in admittance mode)', () => {
     const curve = run(['yA = 0.5 + j0.2', 'c = curve(shunt(yA, j*t), t, -1, 1)']).at(-1)!.curve!;
+    expect(curve).toMatchObject({ frame: 'number', domain: 'admittance' });
+    const shown = displayCurve(curve, 'admittance');
     for (const t of [-1, 0, 0.7]) {
-      const g = curve.point(t)!;
+      const g = shown.point(t)!;
       expect(abs({ re: g.re + 1 / 3, im: g.im } as Complex)).toBeCloseTo(2 / 3, 13); // g = 0.5 circle: centre −1/3, radius 2/3
+      const k = curve.point(t)!; // canonical: on the r = 0.5 circle (y numbers read on the Z grid)
+      expect(abs({ re: k.re - 1 / 3, im: k.im } as Complex)).toBeCloseTo(2 / 3, 13);
     }
   });
 });

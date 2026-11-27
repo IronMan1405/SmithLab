@@ -3,6 +3,7 @@ import { abs, complex, reflectionFromAdmittance, reflectionFromImpedance, reflec
 import {
   type Curve,
   conductanceCircleCurve,
+  displayCurve,
   intersectCurves,
   linePathCurve,
   parametricCurve,
@@ -49,9 +50,15 @@ describe('curve constructions', () => {
     expectComplexClose(up.point(0)!, complex(0, 1)); // r = 0 on the unit circle
   });
 
-  it('conductance and susceptance curves follow Γ = (1−y)/(1+y)', () => {
-    expectComplexClose(conductanceCircleCurve(1).point(0.4)!, reflectionFromAdmittance(complex(1, 0.4)));
-    expect(susceptanceCircleCurve(1).point(0.5)!.im).toBeLessThan(0); // capacitive: lower half
+  it('conductance and susceptance curves are admittance *numbers*, stored canonically at C_Z(g + jb)', () => {
+    const g = conductanceCircleCurve(1);
+    expect(g).toMatchObject({ frame: 'number', domain: 'admittance' });
+    expectComplexClose(g.point(0.4)!, reflectionFromImpedance(complex(1, 0.4)));
+    // In admittance mode they are drawn at Γ = (1 − y)/(1 + y), on the drawn admittance grid.
+    expectComplexClose(displayCurve(g, 'admittance').point(0.4)!, reflectionFromAdmittance(complex(1, 0.4)), 1e-15);
+    // Capacitive b > 0: lower half on the admittance grid, upper half when read on the impedance grid.
+    expect(displayCurve(susceptanceCircleCurve(1), 'admittance').point(0.5)!.im).toBeLessThan(0);
+    expect(displayCurve(susceptanceCircleCurve(1), 'impedance').point(0.5)!.im).toBeGreaterThan(0);
   });
 
   it('transmission-line path: on the |Γ_L| circle, clockwise for increasing l', () => {

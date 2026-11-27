@@ -15,7 +15,7 @@ import {
   rewriteForDrag,
   withSliderValue,
 } from '../src/expressions';
-import { intersectCurves, sampleCurve } from '../src/geometry';
+import { displayCurve, intersectCurves, sampleCurve } from '../src/geometry';
 import { type GestureContext, IDLE, pointerDown, pointerMove, pointerUp } from '../src/interaction/gestures';
 import { createWorkspace, workspaceReducer as reduce } from '../src/workspace';
 import { expectComplexClose } from './helpers';
@@ -49,9 +49,12 @@ describe('curve constructions in expressions', () => {
     expect(curveOf(out, 'n').point(1)!.im).toBeLessThan(0);
   });
 
-  it('gCircle / bCircle use admittance', () => {
+  it('gCircle / bCircle are admittance-number curves: on the admittance grid in admittance mode', () => {
     const out = run(def('y', 'yL = 1 + j0.4'), def('g', 'cg = gCircle(yL)'));
-    expectComplexClose(curveOf(out, 'g').point(0.4)!, reflectionFromAdmittance(complex(1, 0.4)));
+    const cg = curveOf(out, 'g');
+    expect(cg.domain).toBe('admittance');
+    expectComplexClose(displayCurve(cg, 'admittance').point(0.4)!, reflectionFromAdmittance(complex(1, 0.4)), 1e-15);
+    expectComplexClose(displayCurve(cg, 'impedance').point(0.4)!, reflectionFromImpedance(complex(1, 0.4)), 1e-15);
   });
 
   it('linePath follows Γ_L·e^(−j4πl) over [0, l] or [l0, l1]', () => {
@@ -176,11 +179,14 @@ describe('reactivity', () => {
 });
 
 describe('intersections in expressions', () => {
-  it('intersect(rCircle, xCircle) is the impedance r + jx', () => {
+  it('intersect(rCircle, xCircle) is the impedance r + jx (typed by the curves, so it moves with them)', () => {
     const out = run(def('a', 'cr = rCircle(0.5)'), def('b', 'cx = xCircle(1.2)'), def('p', 'p = intersect(cr, cx)'), def('q', 'q = intersect(cr, cx, 2)'));
-    expect(out.results.get('p')!.value!.type).toBe('reflection');
+    expect(out.results.get('p')!.value!.type).toBe('impedance');
+    expectComplexClose(out.results.get('p')!.value!.value, complex(0.5, 1.2), 1e-12);
     expectComplexClose(plottedGamma(out.results.get('p'))!, reflectionFromImpedance(complex(0.5, 1.2)), 1e-12);
-    expectComplexClose(out.results.get('q')!.value!.value, complex(1, 0), 1e-9);
+    // The second meeting point is Γ = 1: the impedance there is infinite (open circuit).
+    expect(Number.isFinite(out.results.get('q')!.value!.value.re)).toBe(false);
+    expectComplexClose(plottedGamma(out.results.get('q'))!, complex(1, 0), 1e-9);
   });
 
   it('reports out-of-range indices, misses (with closest approach) and coincidence', () => {
@@ -246,7 +252,7 @@ describe('dragging expression points', () => {
     const target = reflectionFromImpedance(complex(1, -0.5));
     const cases: [string, string][] = [
       ['zL = 0.5 + j1.2', 'zL = 1 - j0.5'],
-      ['yL = 0.5 + j1.2', 'yL = 0.8 + j0.4'], // y of the same load = 1/(1 − j0.5)
+      ['yL = 0.5 + j1.2', 'yL = 1 - j0.5'], // impedance mode: the y number is read on the Z grid
       ['gammaL = 0.1', `gammaL = ${formatComplexLiteral(target.re, target.im, 4)}`],
       ['ZL = 25 + j60', 'ZL = 50 - j25'], // Z₀ = 50
       ['p = z(0.5 + j1.2)', 'p = z(1 - j0.5)'],

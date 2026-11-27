@@ -101,6 +101,38 @@ export function toReflection(v: TypedValue, ctx: FunctionContext, name: string):
   }
 }
 
+/** Chart frame of a chart-typed value: z/y/Z are numbers, Γ is a plane position. */
+export function frameOfType(type: ValueType): { frame: 'number' | 'plane'; domain: 'impedance' | 'admittance' | null } {
+  if (type === 'reflection') return { frame: 'plane', domain: null };
+  return { frame: 'number', domain: type === 'admittance' ? 'admittance' : 'impedance' };
+}
+
+/**
+ * Canonical chart coordinates of a value (see geometry/chart-mode.ts):
+ * z, y and Z values are numbers, placed canonically at C_Z(number) — for y
+ * that is the *number* y, not the load's physical Γ; Γ values are physical
+ * plane positions.
+ */
+export function canonicalPosition(
+  v: TypedValue,
+  ctx: FunctionContext,
+  name: string,
+): { position: Complex; frame: 'number' | 'plane'; domain: 'impedance' | 'admittance' | null } {
+  switch (v.type) {
+    case 'reflection':
+      return { position: v.value, frame: 'plane', domain: null };
+    case 'impedance':
+      return { position: reflectionFromImpedance(v.value), frame: 'number', domain: 'impedance' };
+    case 'admittance':
+      return { position: reflectionFromImpedance(v.value), frame: 'number', domain: 'admittance' };
+    case 'physicalImpedance':
+      ctx.noteZ0();
+      return { position: reflectionFromImpedance(normalizeImpedance(v.value, ctx.z0)), frame: 'number', domain: 'impedance' };
+    default:
+      throw new TypeMismatch(`${name}() needs an impedance, admittance or reflection coefficient, not ${withArticle(label(v.type))}`);
+  }
+}
+
 /** Convert Γ back to the given chart type. */
 function fromReflection(gamma: Complex, type: ValueType, ctx: FunctionContext): Complex {
   switch (type) {

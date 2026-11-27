@@ -1,6 +1,16 @@
 /**
  * Wavelength scales around the chart perimeter.
  *
+ * Layout (three concentric rings, as on the classic printed chart):
+ *
+ *   outer ring        plain ring closing the toward-generator strip
+ *   generator strip   WTG numbers and the "toward generator" title
+ *   tick ring         the shared reference ring; ticks straddle it
+ *   load strip        WTL numbers and the "toward load" title
+ *   inner ring        plain ring closing the toward-load strip
+ *
+ * Both scales read the same angle, so they share one set of ticks.
+ *
  * Orientation convention (the conventional Smith Chart layout)
  * ------------------------------------------------------------
  * Both scales start at 0 at the short-circuit point (Γ = −1, the left of the
@@ -55,43 +65,71 @@ export interface ScaleTick {
 }
 
 export interface WavelengthScaleGeometry {
-  readonly ring: CircleShape;
+  /** Plain ring on the inside of the toward-load strip. */
+  readonly innerRing: CircleShape;
+  /** Shared reference ring carrying the ticks. */
+  readonly tickRing: CircleShape;
+  /** Plain ring on the outside of the toward-generator strip. */
+  readonly outerRing: CircleShape;
+  /** Ticks straddling the tick ring (shared by both scales). */
   readonly ticks: readonly ScaleTick[];
+  /** WTG numbers, centred in the outer strip. */
   readonly generatorLabels: readonly ChartLabel[];
+  /** WTL numbers, centred in the inner strip. */
   readonly loadLabels: readonly ChartLabel[];
-  /** Paths for the scale titles, drawn left-to-right so text is upright. */
+  /** Title paths, along the centre of each strip, drawn left-to-right so text is upright. */
   readonly generatorTitlePath: ArcShape;
   readonly loadTitlePath: ArcShape;
 }
 
 export interface WavelengthScaleOptions {
-  readonly ringRadius: number;
+  readonly innerRadius: number;
+  readonly tickRadius: number;
+  readonly outerRadius: number;
+  /** Half-length of minor / major ticks on each side of the tick ring. */
   readonly minorTick: number;
   readonly majorTick: number;
   /** Tick spacing in wavelengths. */
   readonly step: number;
   /** Every n-th tick is major and labelled. */
   readonly majorEvery: number;
-  readonly loadLabelRadius: number;
-  readonly generatorLabelRadius: number;
-  readonly generatorTitleRadius: number;
-  readonly loadTitleRadius: number;
+  /** Angular span of each title path, in radians. */
+  readonly titleSpan: number;
 }
 
 export const DEFAULT_WAVELENGTH_SCALE: WavelengthScaleOptions = {
-  ringRadius: 1.1,
-  minorTick: 0.014,
-  majorTick: 0.028,
+  innerRadius: 1.09,
+  tickRadius: 1.17,
+  outerRadius: 1.25,
+  minorTick: 0.007,
+  majorTick: 0.014,
   step: 0.01,
   majorEvery: 5,
-  loadLabelRadius: 1.145,
-  generatorLabelRadius: 1.205,
-  generatorTitleRadius: 1.262,
-  loadTitleRadius: 1.29,
+  // Titles sit in the gap between two numbers (0.05λ = 36° apart).
+  titleSpan: (30 * Math.PI) / 180,
 };
+
+/** Centre radius of the toward-load (inner) strip. */
+export function loadStripRadius(o: WavelengthScaleOptions = DEFAULT_WAVELENGTH_SCALE): number {
+  return (o.innerRadius + o.tickRadius) / 2;
+}
+
+/** Centre radius of the toward-generator (outer) strip. */
+export function generatorStripRadius(o: WavelengthScaleOptions = DEFAULT_WAVELENGTH_SCALE): number {
+  return (o.tickRadius + o.outerRadius) / 2;
+}
 
 export function formatWavelength(value: number): string {
   return value === 0 ? '0' : value.toFixed(2).replace(/^0/, '');
+}
+
+/**
+ * Direction (radians, Γ-plane) of an upright text baseline running along a
+ * circle at angle φ: clockwise tangent on the upper half, anticlockwise on
+ * the lower half, so text always reads left to right and never upside down.
+ */
+export function uprightTangentAngle(phi: number): number {
+  return Math.sin(phi) >= 0 ? phi - Math.PI / 2 : phi + Math.PI / 2;
 }
 
 function titleArc(radius: number, centerAngle: number, span: number, clockwise: boolean): ArcShape {
@@ -108,50 +146,63 @@ function titleArc(radius: number, centerAngle: number, span: number, clockwise: 
   };
 }
 
-export function buildWavelengthScale(options: WavelengthScaleOptions = DEFAULT_WAVELENGTH_SCALE): WavelengthScaleGeometry {
+/** Ticks straddling the tick ring, one per `step` wavelengths at the WTG angle. */
+export function scaleTicks(options: WavelengthScaleOptions = DEFAULT_WAVELENGTH_SCALE): ScaleTick[] {
   const count = Math.round(PERIOD / options.step);
   const ticks: ScaleTick[] = [];
-  const generatorLabels: ChartLabel[] = [];
-  const loadLabels: ChartLabel[] = [];
-
   for (let i = 0; i < count; i++) {
     const value = i * options.step;
     const angle = wtgAngle(value);
     const major = i % options.majorEvery === 0;
-    const length = major ? options.majorTick : options.minorTick;
+    const half = major ? options.majorTick : options.minorTick;
     ticks.push({
       value,
       major,
-      inner: fromPolar(options.ringRadius, angle),
-      outer: fromPolar(options.ringRadius + length, angle),
+      inner: fromPolar(options.tickRadius - half, angle),
+      outer: fromPolar(options.tickRadius + half, angle),
     });
-    if (major) {
-      const direction = fromPolar(1, angle);
-      generatorLabels.push({
-        id: `wtg:${i}`,
-        text: formatWavelength(value),
-        role: 'wavelength-generator',
-        anchor: fromPolar(options.generatorLabelRadius, angle),
-        direction,
-      });
-      loadLabels.push({
-        id: `wtl:${i}`,
-        text: formatWavelength(mod(PERIOD - value, PERIOD)),
-        role: 'wavelength-load',
-        anchor: fromPolar(options.loadLabelRadius, angle),
-        direction,
-      });
-    }
+  }
+  return ticks;
+}
+
+export function buildWavelengthScale(options: WavelengthScaleOptions = DEFAULT_WAVELENGTH_SCALE): WavelengthScaleGeometry {
+  const count = Math.round(PERIOD / options.step);
+  const generatorLabels: ChartLabel[] = [];
+  const loadLabels: ChartLabel[] = [];
+  const gR = generatorStripRadius(options);
+  const lR = loadStripRadius(options);
+
+  for (let i = 0; i < count; i += options.majorEvery) {
+    const value = i * options.step;
+    const angle = wtgAngle(value);
+    const direction = fromPolar(1, angle);
+    generatorLabels.push({
+      id: `wtg:${i}`,
+      text: formatWavelength(value),
+      role: 'wavelength-generator',
+      anchor: fromPolar(gR, angle),
+      direction,
+    });
+    loadLabels.push({
+      id: `wtl:${i}`,
+      text: formatWavelength(mod(PERIOD - value, PERIOD)),
+      role: 'wavelength-load',
+      anchor: fromPolar(lR, angle),
+      direction,
+    });
   }
 
+  const ring = (radius: number): CircleShape => ({ kind: 'circle', center: complex(0, 0), radius });
   return {
-    ring: { kind: 'circle', center: complex(0, 0), radius: options.ringRadius },
-    ticks,
+    innerRing: ring(options.innerRadius),
+    tickRing: ring(options.tickRadius),
+    outerRing: ring(options.outerRadius),
+    ticks: scaleTicks(options),
     generatorLabels,
     loadLabels,
-    // Top of the chart, read left → right = clockwise = toward generator.
-    generatorTitlePath: titleArc(options.generatorTitleRadius, Math.PI / 2, (2 * Math.PI) / 3, true),
-    // Bottom of the chart, read left → right = counter-clockwise = toward load.
-    loadTitlePath: titleArc(options.loadTitleRadius, -Math.PI / 2, (2 * Math.PI) / 3, false),
+    // Top of the outer strip (between WTG .10 and .15), read left → right = clockwise = toward generator.
+    generatorTitlePath: titleArc(gR, Math.PI / 2, options.titleSpan, true),
+    // Bottom of the inner strip, read left → right = anticlockwise = toward load.
+    loadTitlePath: titleArc(lR, -Math.PI / 2, options.titleSpan, false),
   };
 }

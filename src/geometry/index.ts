@@ -10,3 +10,5 @@ export * from './wavelength-scale';
 export * from './curves';
 export * from './curve-sampling';
 export * from './intersections';
+export * from './chart-mode';
+export * from './guide-annotations';

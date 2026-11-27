@@ -10,6 +10,8 @@ export interface CurveIntersections {
   readonly otherName: string | null;
   /** Display label of the other curve. */
   readonly otherLabel: string;
+  /** Why this intersection cannot be added as an intersect() expression (null if it can). */
+  readonly notReferenceable: string | null;
   readonly result: IntersectionResult;
 }
 
@@ -104,10 +106,13 @@ export function CurveInspector(props: CurveInspectorProps) {
         <p className="hint">No other visible curves.</p>
       ) : (
         <ul className="intersection-list">
-          {props.intersections.map(({ otherId, otherName, otherLabel, result }) => (
+          {props.intersections.map(({ otherId, otherName, otherLabel, result, notReferenceable }) => (
             <li key={otherId}>
               <div className="intersection-with">with {otherLabel}</div>
               {result.coincident && <p className="hint">The curves coincide.</p>}
+              {notReferenceable && result.points.length > 0 && (
+                <p className="hint mode-note">Shown as drawn in this chart mode; cannot be added with intersect().</p>
+              )}
               {!result.coincident && result.points.length === 0 && (
                 <p className="hint">
                   No intersection
@@ -137,11 +142,12 @@ export function CurveInspector(props: CurveInspectorProps) {
                     <button
                       type="button"
                       className="link expr-link"
-                      disabled={!props.name || !otherName}
+                      disabled={!props.name || !otherName || notReferenceable !== null}
                       title={
-                        props.name && otherName
+                        notReferenceable ??
+                        (props.name && otherName
                           ? 'Add this intersection as a point expression'
-                          : 'Only named expression curves can be referenced (use radial(…) for an expression guide)'
+                          : 'Only named expression curves can be referenced (use radial(…) for an expression guide)')
                       }
                       onClick={() => otherName && props.onAddIntersectionPoint(otherName, i + 1)}
                     >

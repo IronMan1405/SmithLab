@@ -27,6 +27,7 @@
  */
 import { type Complex, DEFAULT_Z0, assertComplex, assertReferenceImpedance } from '../core';
 import { CURVE_COLORS, type CurveColor, type ExpressionDef, type SliderSpec, assertSlider, createExpressionDef } from '../expressions';
+import type { ChartMode } from '../geometry/chart-mode';
 import {
   type DerivedPoint,
   type RadialGuide,
@@ -53,6 +54,12 @@ export interface WorkspaceState {
   readonly expressions: readonly ExpressionDef[];
   /** Radial guides attached to points or expressions. */
   readonly guides: readonly RadialGuide[];
+  /**
+   * Active chart coordinate system. A view setting: it decides where
+   * z/y/Z values are drawn, never their values (see geometry/chart-mode.ts).
+   * Independent of which grids are visible.
+   */
+  readonly chartMode: ChartMode;
   readonly selectedId: string | null;
   readonly z0: number;
   /** Next number used for default names (P1, P2, …). Never reused. */
@@ -82,6 +89,7 @@ export type WorkspaceAction =
   | { readonly type: 'expression/set-color'; readonly id: string; readonly color: CurveColor | null }
   | { readonly type: 'guide/add'; readonly id: string; readonly sourceId: string }
   | { readonly type: 'guide/set-visible'; readonly id: string; readonly visible: boolean }
+  | { readonly type: 'chart/set-mode'; readonly mode: ChartMode }
   | { readonly type: 'points/clear' }
   | { readonly type: 'z0/set'; readonly z0: number };
 
@@ -89,7 +97,7 @@ export const MAX_NAME_LENGTH = 40;
 
 export function createWorkspace(z0: number = DEFAULT_Z0): WorkspaceState {
   assertReferenceImpedance(z0);
-  return { points: [], derived: [], expressions: [], guides: [], selectedId: null, z0, nextNumber: 1 };
+  return { points: [], derived: [], expressions: [], guides: [], chartMode: 'impedance', selectedId: null, z0, nextNumber: 1 };
 }
 
 function normalizeName(name: string): string {
@@ -158,6 +166,9 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       const guide: RadialGuide = { id: action.id, sourceId: action.sourceId, visible: true };
       return { ...state, guides: [...state.guides, guide], selectedId: guide.id };
     }
+    case 'chart/set-mode':
+      if (action.mode !== 'impedance' && action.mode !== 'admittance') throw new RangeError(`Unknown chart mode "${String(action.mode)}"`);
+      return state.chartMode === action.mode ? state : { ...state, chartMode: action.mode };
     case 'guide/set-visible':
       return {
         ...state,

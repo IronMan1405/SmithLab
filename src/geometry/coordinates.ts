@@ -37,9 +37,9 @@ export const CHART_RADIUS = 1000;
 
 /**
  * Space around the unit circle reserved for boundary labels and the
- * wavelength scales (out to |Γ| ≈ 1.32), in SVG user units.
+ * wavelength scales and their titles (out to |Γ| ≈ 1.36), in SVG user units.
  */
-export const CHART_MARGIN = 330;
+export const CHART_MARGIN = 380;
 
 export interface ViewBox {
   readonly minX: number;

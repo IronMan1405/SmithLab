@@ -1,10 +1,9 @@
 import { memo } from 'react';
-import { type ChartLabel, buildWavelengthScale, gammaToSvg } from '../geometry';
-import { labelAlignment } from './ChartLabels';
+import { arg } from '../core';
+import { type ChartLabel, buildWavelengthScale, gammaToSvg, uprightTangentAngle } from '../geometry';
 import { shapeToPath } from './svg-path';
 
 const SCALE = buildWavelengthScale();
-const RING_PATH = shapeToPath(SCALE.ring);
 const TICK_PATH = SCALE.ticks
   .map((t) => {
     const a = gammaToSvg(t.inner);
@@ -16,23 +15,30 @@ const GENERATOR_TITLE_ID = 'smithlab-wtg-title';
 const LOAD_TITLE_ID = 'smithlab-wtl-title';
 
 /** Sizes in SVG user units at zoom 1. */
-const LABEL_SIZE = 30;
-const TITLE_SIZE = 27;
+const LABEL_SIZE = 28;
+const TITLE_SIZE = 30;
 
-function ScaleLabels({ labels, zoom, className }: { labels: readonly ChartLabel[]; zoom: number; className: string }) {
+/** SVG rotation (degrees) that lays text along the circle at Γ-angle φ, upright. */
+export function tangentRotation(phi: number): number {
+  // Γ-plane angles are anticlockwise-positive; SVG rotation is clockwise-positive.
+  return (-uprightTangentAngle(phi) * 180) / Math.PI;
+}
+
+/** Numbers set along their strip (tangential, upright), centred on the strip. */
+function StripLabels({ labels, zoom }: { labels: readonly ChartLabel[]; zoom: number }) {
   return (
-    <g className={className}>
+    <g className="scale-labels">
       {labels.map((label) => {
         const p = gammaToSvg(label.anchor);
-        const { anchor, baseline } = labelAlignment(label.direction);
         return (
           <text
             key={label.id}
             x={p.x}
             y={p.y}
-            textAnchor={anchor}
-            dominantBaseline={baseline}
-            style={{ fontSize: LABEL_SIZE / zoom, strokeWidth: 5 / zoom }}
+            textAnchor="middle"
+            dominantBaseline="central"
+            transform={`rotate(${tangentRotation(arg(label.anchor)).toFixed(3)} ${p.x.toFixed(2)} ${p.y.toFixed(2)})`}
+            style={{ fontSize: LABEL_SIZE / zoom, strokeWidth: 4 / zoom }}
           >
             {label.text}
           </text>
@@ -42,9 +48,23 @@ function ScaleLabels({ labels, zoom, className }: { labels: readonly ChartLabel[
   );
 }
 
+function StripTitle({ id, text, zoom }: { id: string; text: string; zoom: number }) {
+  // Titles keep their screen size when zooming in, but don't grow when zoomed
+  // out, so they always fit in the gap between two numbers.
+  return (
+    <text className="scale-title" style={{ fontSize: TITLE_SIZE / Math.max(zoom, 1) }} dominantBaseline="central">
+      <textPath href={`#${id}`} startOffset="50%" textAnchor="middle">
+        {text}
+      </textPath>
+    </text>
+  );
+}
+
 /**
- * Wavelengths-toward-generator (outer row, clockwise) and
- * wavelengths-toward-load (inner row, counter-clockwise) scales.
+ * Three concentric rings: the shared tick ring in the middle, the
+ * toward-generator strip (numbers + title) outside it closed by the outer
+ * ring, and the toward-load strip inside it closed by the inner ring. Each
+ * scale's ring, numbers and title are grouped together.
  */
 export const WavelengthScale = memo(function WavelengthScale({ zoom }: { zoom: number }) {
   return (
@@ -53,20 +73,23 @@ export const WavelengthScale = memo(function WavelengthScale({ zoom }: { zoom: n
         <path id={GENERATOR_TITLE_ID} d={shapeToPath(SCALE.generatorTitlePath)} />
         <path id={LOAD_TITLE_ID} d={shapeToPath(SCALE.loadTitlePath)} />
       </defs>
-      <path className="scale-ring" d={RING_PATH} />
-      <path className="scale-ticks" d={TICK_PATH} />
-      <ScaleLabels labels={SCALE.loadLabels} zoom={zoom} className="scale-labels load" />
-      <ScaleLabels labels={SCALE.generatorLabels} zoom={zoom} className="scale-labels generator" />
-      <text className="scale-title generator" style={{ fontSize: TITLE_SIZE / zoom }}>
-        <textPath href={`#${GENERATOR_TITLE_ID}`} startOffset="50%" textAnchor="middle">
-          WAVELENGTHS TOWARD GENERATOR →
-        </textPath>
-      </text>
-      <text className="scale-title load" style={{ fontSize: TITLE_SIZE / zoom }}>
-        <textPath href={`#${LOAD_TITLE_ID}`} startOffset="50%" textAnchor="middle">
-          WAVELENGTHS TOWARD LOAD →
-        </textPath>
-      </text>
+
+      <g className="scale-reference">
+        <path className="scale-ring" d={shapeToPath(SCALE.tickRing)} />
+        <path className="scale-ticks" d={TICK_PATH} />
+      </g>
+
+      <g className="scale generator" aria-label="Wavelengths toward generator">
+        <path className="scale-ring" d={shapeToPath(SCALE.outerRing)} />
+        <StripLabels labels={SCALE.generatorLabels} zoom={zoom} />
+        <StripTitle id={GENERATOR_TITLE_ID} text="WAVELENGTHS TOWARD GENERATOR →" zoom={zoom} />
+      </g>
+
+      <g className="scale load" aria-label="Wavelengths toward load">
+        <path className="scale-ring" d={shapeToPath(SCALE.innerRing)} />
+        <StripLabels labels={SCALE.loadLabels} zoom={zoom} />
+        <StripTitle id={LOAD_TITLE_ID} text="WAVELENGTHS TOWARD LOAD →" zoom={zoom} />
+      </g>
     </g>
   );
 });

@@ -50,6 +50,12 @@ export interface ResolvedPoint {
   readonly transform: PointTransform | null;
   /** Expression points only: true when dragging can rewrite the expression's literal. */
   readonly draggable?: boolean;
+  /**
+   * Expression points only: physical Γ of the load the value represents,
+   * when it differs from the drawn position `gamma` (e.g. a y value drawn
+   * on the impedance grid). Readouts use this.
+   */
+  readonly physicalGamma?: Complex;
 }
 
 export function applyTransform(gamma: Complex, transform: PointTransform): Complex {

@@ -541,6 +541,66 @@ The expression text is still the only stored state. A curve is recomputed throug
 - Computed points (`intersect(…)`, `1/zL`, …) are locked. Their cursor doesn't offer a drag, and the inspector explains why.
 - A drag that would need an infinite value (an impedance at Γ = 1) is ignored.
 
+### Chart coordinate modes, rotation, scales and guide labels (3D.1)
+
+**Coordinate modes ("Coords Z | Y" in the toolbar).** The mode chooses which grid *numbers* are placed on. It is independent of which grids are visible, and it never changes expression values. `geometry/chart-mode.ts` defines it:
+
+```
+impedance mode   number w is drawn at C_Z(w) = (w − 1)/(w + 1)
+admittance mode  number w is drawn at C_Y(w) = (1 − w)/(1 + w) = −C_Z(w)
+```
+
+| Frame | What belongs to it | Where it is drawn |
+|---|---|---|
+| **number** | z, y and Z (as Z/Z₀) values, and curves made of them (`rCircle`, `xCircle`, `gCircle`, `bCircle`, and `linePath`, `radial` or `curve()` of a z/y/Z value) | Stored canonically at C_Z(w); flipped exactly (rotation by π) in admittance mode |
+| **plane** | Γ values, manual points, line-input points, line arcs, wavelength scales, Γ curves | At the physical Γ in both modes |
+
+What this means in practice:
+- In impedance mode, `yL = 1/zL` sits opposite `zL`. In admittance mode, `yL` sits on its admittance-grid coordinates and `zL` is opposite.
+- `gamma(zL)` never moves.
+- `gCircle(1)` coincides with `rCircle(1)` in impedance mode, and with the drawn g = 1 circle in admittance mode.
+
+**Readouts, overlay and dragging.**
+- Readouts always describe the physical load a value represents.
+- The selection overlay draws the active grid's curves through the point: r/x in impedance mode, g/b in admittance mode.
+- Dragging a literal expression point writes the active-grid number at the drop point.
+
+**`intersect()` and `at()`** return a value of the curves' own kind: a z or y point for number curves, a Γ point for plane curves. Combinations:
+- number ∩ number: computed as numbers, so the same in every mode;
+- plane ∩ plane: a Γ point;
+- number ∩ a plane circle centred on Γ = 0 (`vswrCircle`): allowed;
+- number ∩ any other plane curve: currently an error, because the answer would depend on the mode. `intersectionFrame()` is the place to add explicitly mode-dependent intersections later.
+
+**Type-rule change.** A multiple of a length (`2*l`, `-4*pi*l`) is now a plain number. Name it `l…` to keep it a length. This makes `rotate(c, -4*pi*l)` an angle.
+
+**`rotate(c, θ)`** rotates a curve about Γ = 0 by θ radians: Γ_rot(t) = Γ(t)·e^(jθ).
+- It is exact for circles, arcs and segments: centres, endpoints and start angles rotate, while the radius, sweep, direction of travel and parameter are unchanged. There is no resampling.
+- A half-turn is exactly −1.
+- Rotation preserves |Γ|, and intersections of rotated curves stay analytic.
+- Along a line of l wavelengths toward the generator, use `rotate(c, -4*pi*l)`. A bare length is rejected with that hint.
+- The same primitive performs the admittance-mode flip.
+
+**Wavelength scales.** Three concentric rings, as on the classic printed chart:
+
+| Radius | Element |
+|---|---|
+| 1.09 | inner ring, closing the toward-load strip |
+| 1.09–1.17 | toward-load strip: WTL numbers and the "toward load" title |
+| 1.17 | shared tick ring; ticks straddle it, since both scales read the same angle |
+| 1.17–1.25 | toward-generator strip: WTG numbers and the "toward generator" title |
+| 1.25 | outer ring, closing the toward-generator strip |
+
+- Numbers are set upright along their strip.
+- Each title sits inside its own strip, in the gap between two numbers: generator at the top, load at the bottom. Titles are semibold sans-serif and don't grow when zoomed out, so they always fit their gap.
+- Each scale's ring, numbers and title are grouped together in the SVG.
+
+**Radial guides** extend past the unit circle to the outer ring, as a visual aid (the guide *curve* itself still ends at |Γ| = 1). Their readings are written just outside the outer ring, along the circle like the scale numbers:
+- the selected guide shows `WTG ↻ .325λ / WTL ↺ .175λ`;
+- other guides show a compact `↻ .325λ`;
+- guides closer than 8° stack outward.
+
+Readings come from the *displayed* angle, using the existing conventions (WTG = ((π − ∠Γ)/4π) mod ½, increasing clockwise; WTL = ½ − WTG). A guide on a y value therefore reads λ/4 differently in the two modes, while a guide on a manual point reads the same.
+
 ### Series and shunt elements (Milestone 3D, Phase 1)
 
 ```
@@ -635,6 +695,8 @@ normalised z is unchanged and its physical Z = z·Z₀ is re-derived.
 
 ## Known limitations
 
+- **Mixed-frame intersections.** Intersections between number curves and asymmetric plane curves (e.g. `radial(gammaL)` with `rCircle(1)`) are reported as mode-dependent rather than computed. The curve inspector still shows where they cross as drawn.
+- **Narrow toolbars wrap.** At about 1000 px the toolbar wraps onto a second row.
 - **Series/shunt sweeps are sampled, not exact.** Sweeps use `curve()`. Exact `seriesPath`/`shuntPath` arcs are planned for Phase 2.
 - **No curves as inputs.** `series`, `shunt` and `line` accept points only.
 - **No siemens type.** Shunt elements are given as normalized b, or in ohms via `Z(…)`.

@@ -296,9 +296,18 @@ function evaluateEntry(
   }
 }
 
-/** Γ of a successfully plotted expression, or null. */
+/** Physical Γ of the load a successfully plotted expression represents, or null. */
 export function plottedGamma(result: ExpressionResult | undefined): Complex | null {
   return result?.status === 'ok' && result.plot?.kind === 'point' ? result.plot.gamma : null;
+}
+
+/** Canonical chart position and frame of a plotted expression, or null (see geometry/chart-mode.ts). */
+export function plottedPosition(
+  result: ExpressionResult | undefined,
+): { readonly position: Complex; readonly frame: 'number' | 'plane' } | null {
+  return result?.status === 'ok' && result.plot?.kind === 'point'
+    ? { position: result.plot.position, frame: result.plot.frame }
+    : null;
 }
 
 /** Ids of expressions that reference `name` (directly). */

@@ -207,22 +207,21 @@
   stroke: var(--bg);
   stroke-linejoin: round;
 }
-.scale-labels.generator text {
+.scale.generator .scale-labels text,
+.scale.generator .scale-title {
   fill: var(--scale-generator);
 }
-.scale-labels.load text {
+.scale.load .scale-labels text,
+.scale.load .scale-title {
   fill: var(--scale-load);
 }
 .scale-title {
-  letter-spacing: 0.12em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: 0.03em;
   stroke-width: 0;
 }
-.scale-title.generator {
-  fill: var(--scale-generator);
-}
-.scale-title.load {
-  fill: var(--scale-load);
-}
+
 
 /* Expression-defined points */
 .point.expression .point-dot {
@@ -290,4 +289,32 @@
   fill: var(--chart-disc) !important;
   stroke: var(--accent);
   stroke-width: 2.5px;
+}
+
+/* Radial-guide wavelength readings */
+.guide-labels {
+  pointer-events: none;
+}
+.guide-label {
+  font-family: var(--font-mono);
+  fill: var(--text-muted);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-linejoin: round;
+}
+.guide-annotation.full .guide-label {
+  fill: var(--text);
+  font-weight: 600;
+}
+.guide-extension {
+  fill: none;
+  stroke: var(--curve-guide);
+  stroke-width: 1.2px;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.85;
+}
+.guide-annotation.full .guide-extension {
+  stroke-width: 2px;
+  opacity: 1;
 }

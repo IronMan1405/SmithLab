@@ -26,16 +26,27 @@ import {
   isDraggableExpression,
   lineConstruction,
   plottedGamma,
+  plottedPosition,
   rewriteForDrag,
   withSliderValue,
 } from './expressions';
-import { type Curve, intersectCurves, radialGuideCurve } from './geometry';
+import {
+  type ChartMode,
+  type Curve,
+  displayCurve,
+  CHART_RADIUS,
+  DEFAULT_WAVELENGTH_SCALE,
+  displayPosition,
+  guideAnnotations,
+  intersectCurves,
+  intersectionFrame,
+  radialGuideCurve,
+} from './geometry';
 import type { Complex } from './core';
 import type { ResolvedPoint } from './workspace';
 import {
   createPointId,
   createWorkspace,
-  pointQuantities,
   resolveGamma,
   resolvePoint,
   resolvePoints,
@@ -71,24 +82,39 @@ export function App() {
     return output;
   }, [workspace.expressions, workspace.z0]);
 
+  // Chart coordinate mode: a view setting. It changes where number-frame
+  // objects are drawn (and the inverse used when dragging), never values.
+  const mode: ChartMode = workspace.chartMode;
+
+  /** Displayed position of an expression (null when it has no chart position). */
+  const displayOf = useCallback(
+    (id: string) => {
+      const placed = plottedPosition(evaluation.results.get(id));
+      return placed ? displayPosition(placed.position, placed.frame, mode) : null;
+    },
+    [evaluation, mode],
+  );
+
   const expressionPoints = useMemo<ResolvedPoint[]>(() => {
     const result: ResolvedPoint[] = [];
     for (const def of workspace.expressions) {
       const r = evaluation.results.get(def.id);
-      const gamma = plottedGamma(r);
-      if (!def.visible || !gamma || !r) continue;
+      const display = displayOf(def.id);
+      const physical = plottedGamma(r);
+      if (!def.visible || !display || !physical || !r) continue;
       result.push({
         id: def.id,
         name: r.name ?? def.text,
         role: 'expression',
-        gamma,
+        gamma: display,
+        physicalGamma: physical,
         sourceId: null,
         transform: null,
         draggable: isDraggableExpression(def, r),
       });
     }
     return result;
-  }, [workspace.expressions, evaluation]);
+  }, [workspace.expressions, evaluation, displayOf]);
 
   // Curves: colour is the expression's own choice or a palette colour by order.
   const curveColors = useMemo(() => {
@@ -102,17 +128,18 @@ export function App() {
     return colors;
   }, [workspace.expressions, evaluation]);
 
-  // Current Γ of every point a guide can be attached to (including hidden expression points).
+  // Displayed position of every point a guide can be attached to (including
+  // hidden expression points). Guides are drawn through what is displayed.
   const gammaById = useMemo(() => {
     const map = new Map<string, { gamma: Complex; name: string }>();
     for (const p of resolved) map.set(p.id, { gamma: p.gamma, name: p.name });
     for (const def of workspace.expressions) {
       const r = evaluation.results.get(def.id);
-      const gamma = plottedGamma(r);
+      const gamma = displayOf(def.id);
       if (gamma && r) map.set(def.id, { gamma, name: r.name ?? def.text });
     }
     return map;
-  }, [resolved, workspace.expressions, evaluation]);
+  }, [resolved, workspace.expressions, evaluation, displayOf]);
 
   /** Radial guide geometry, derived from each guide's source (null when undefined, e.g. Γ = 0). */
   const guideCurves = useMemo(() => {
@@ -135,7 +162,12 @@ export function App() {
     for (const def of workspace.expressions) {
       const curve = evaluation.results.get(def.id)?.curve;
       if (!curve || !def.visible) continue;
-      result.push({ id: def.id, curve, color: curveColors.get(def.id) ?? 'teal', selected: workspace.selectedId === def.id });
+      result.push({
+        id: def.id,
+        curve: displayCurve(curve, mode),
+        color: curveColors.get(def.id) ?? 'teal',
+        selected: workspace.selectedId === def.id,
+      });
     }
     for (const g of workspace.guides) {
       const curve = guideCurves.get(g.id);
@@ -143,9 +175,32 @@ export function App() {
       result.push({ id: g.id, curve, color: 'guide', selected: workspace.selectedId === g.id, dashed: true });
     }
     return result;
-  }, [workspace.expressions, workspace.guides, workspace.selectedId, evaluation, curveColors, guideCurves]);
+  }, [workspace.expressions, workspace.guides, workspace.selectedId, evaluation, curveColors, guideCurves, mode]);
 
   const selectedGuide = workspace.guides.find((g) => g.id === workspace.selectedId) ?? null;
+
+  // Wavelength readings for every visible radial guide (workspace guides and
+  // radial() curves), taken from the displayed guide angle.
+  // Guides extend to the outer scale ring (or just past the chart when the
+  // scales are hidden), with their readings written outside it.
+  const guideLabels = useMemo(
+    () =>
+      unitsPerPixel > 0
+        ? guideAnnotations(
+            curveVisuals.flatMap((c) =>
+              c.curve.kind === 'radialGuide' && c.curve.shape?.kind === 'segment'
+                ? [{ id: c.id, end: c.curve.shape.end, selected: c.selected }]
+                : [],
+            ),
+            {
+              outerRadius: showWavelengthScales ? DEFAULT_WAVELENGTH_SCALE.outerRadius : 1.09,
+              lineHeight: (13 * unitsPerPixel) / CHART_RADIUS,
+              gap: (4 * unitsPerPixel) / CHART_RADIUS,
+            },
+          )
+        : [],
+    [curveVisuals, unitsPerPixel, showWavelengthScales],
+  );
 
   const draggableIds = useMemo(
     () => new Set(expressionPoints.filter((p) => p.draggable).map((p) => p.id)),
@@ -157,8 +212,9 @@ export function App() {
     const id = workspace.selectedId;
     const def = id ? workspace.expressions.find((e) => e.id === id) : undefined;
     const result = id ? evaluation.results.get(id) : undefined;
-    return def && result?.curve ? { def, result, curve: result.curve } : null;
-  }, [workspace.selectedId, workspace.expressions, evaluation]);
+    // `curve` is as displayed in the current mode; `canonical` is the expression's value.
+    return def && result?.curve ? { def, result, canonical: result.curve, curve: displayCurve(result.curve, mode) } : null;
+  }, [workspace.selectedId, workspace.expressions, evaluation, mode]);
 
   const [probe, setProbe] = useState<{ id: string; t: number } | null>(null);
   const [activeIntersection, setActiveIntersection] = useState<string | null>(null);
@@ -180,7 +236,16 @@ export function App() {
         otherLabel: c.dashed
           ? `radial guide (${gammaById.get(workspace.guides.find((g) => g.id === c.id)?.sourceId ?? '')?.name ?? '?'})`
           : (evaluation.results.get(c.id)?.name ?? 'unnamed curve'),
+        // What is seen: the curves as displayed in the current mode.
         result: intersectCurves(selectedCurve.curve, c.curve),
+        // Whether intersect() can express it (mode-independent frames only).
+        notReferenceable: c.dashed
+          ? 'Radial guides on chart points cannot be referenced in expressions'
+          : (() => {
+              const other = evaluation.results.get(c.id)?.curve;
+              const frame = other ? intersectionFrame(selectedCurve.canonical, other) : null;
+              return frame && !frame.ok ? frame.reason : null;
+            })(),
       }));
   }, [selectedCurve, curveVisuals, evaluation, gammaById, workspace.guides]);
 
@@ -193,8 +258,8 @@ export function App() {
   );
 
   // Latest state for the (stable) command handler.
-  const latest = useRef({ workspace, evaluation });
-  latest.current = { workspace, evaluation };
+  const latest = useRef({ workspace, evaluation, mode });
+  latest.current = { workspace, evaluation, mode };
 
   /** Everything drawn on (and hit-testable in) the chart. */
   const chartPoints = useMemo(() => [...resolved, ...expressionPoints], [resolved, expressionPoints]);
@@ -214,10 +279,6 @@ export function App() {
       ? { text: def.text, typeLabel: TYPE_INFO[value.type].label, draggable: selected.draggable === true }
       : null;
   }, [selected, workspace.expressions, evaluation]);
-  const quantities = useMemo(
-    () => (selected ? pointQuantities(selected.gamma, workspace.z0) : null),
-    [selected, workspace.z0],
-  );
 
   const lines = useMemo<LineVisual[]>(() => {
     const result: LineVisual[] = [];
@@ -244,11 +305,12 @@ export function App() {
         dispatch({ type: 'point/select', id: null });
         break;
       case 'move': {
-        const { workspace: ws, evaluation: ev } = latest.current;
+        const { workspace: ws, evaluation: ev, mode: m } = latest.current;
         const def = ws.expressions.find((e) => e.id === command.id);
         if (def) {
           // Expression point: rewrite its literal (only if it is a literal).
-          const text = rewriteForDrag(def, ev.results.get(def.id), command.gamma, ws.z0);
+          // The command carries the displayed position; map it back through the active mode.
+          const text = rewriteForDrag(def, ev.results.get(def.id), command.gamma, ws.z0, m);
           if (text && text !== def.text) dispatch({ type: 'expression/set-text', id: def.id, text });
         } else {
           dispatch({ type: 'point/move', id: command.id, gamma: command.gamma });
@@ -376,6 +438,31 @@ export function App() {
             λ scales
           </label>
         </div>
+        <div className="mode-control">
+          <span className="mode-label" id="chart-coords-label">
+            Coords
+          </span>
+          <div className="segmented mode-switch" role="radiogroup" aria-labelledby="chart-coords-label">
+            {(['impedance', 'admittance'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                aria-label={m === 'impedance' ? 'Impedance coordinates' : 'Admittance coordinates'}
+                className={mode === m ? 'active' : undefined}
+                title={
+                  m === 'impedance'
+                    ? 'Impedance coordinates: z, y and Z values are placed by their number on the impedance grid'
+                    : 'Admittance coordinates: z, y and Z values are placed by their number on the admittance grid'
+                }
+                onClick={() => dispatch({ type: 'chart/set-mode', mode: m })}
+              >
+                {m === 'impedance' ? 'Z' : 'Y'}
+              </button>
+            ))}
+          </div>
+        </div>
         <Z0Control value={workspace.z0} onChange={(z0) => dispatch({ type: 'z0/set', z0 })} />
         <ThemeSwitcher value={themePreference} onChange={setThemePreference} />
       </header>
@@ -430,7 +517,9 @@ export function App() {
             probe={probeGamma}
             intersections={intersectionMarks}
             selectedId={workspace.selectedId}
-            selection={quantities}
+            selectionDisplay={selected ? selected.gamma : null}
+            guideAnnotations={guideLabels}
+            chartMode={mode}
             selectionOnLinePath={selectionOnLinePath}
             gestureKind={interaction.gestureKind}
             onFocusPoint={focusPoint}

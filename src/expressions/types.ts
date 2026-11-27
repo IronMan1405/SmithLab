@@ -128,17 +128,18 @@ export function binaryResultType(op: BinaryOp, a: ValueType, b: ValueType, bIsRe
   if (op === '*') {
     if (aPlain || bPlain) {
       const domain = aPlain ? b : a;
-      const plainIsReal = aPlain ? aIsReal : bIsReal;
-      if (domain === 'length') return plainIsReal ? 'length' : 'complex';
+      // A multiple of a length is a plain number (e.g. the angle −4πl); name it
+      // l… to declare a length again. This keeps rotate(c, -4*pi*l) an angle.
+      if (domain === 'length') return 'plain';
       return domain; // scaling (or rotating, for Γ) keeps the meaning
     }
-    if (a === 'length' || b === 'length') throw new TypeMismatch('Cannot multiply an electrical length by a ' + label(a === 'length' ? b : a));
+    if (a === 'length' || b === 'length') throw new TypeMismatch(`Cannot multiply an electrical length by ${withArticle(label(a === 'length' ? b : a))}`);
     return 'complex';
   }
 
   // op === '/'
   if (bPlain) {
-    if (a === 'length') return bIsReal ? 'length' : 'complex';
+    if (a === 'length') return 'plain';
     return a; // domain / plain
   }
   if (aPlain) {
