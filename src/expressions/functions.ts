@@ -7,14 +7,17 @@
 import {
   type Complex,
   abs,
+  add,
   admittanceFromImpedance,
   admittanceFromReflection,
   arg,
   complex,
   conj,
+  denormalizeImpedance,
   div,
   impedanceFromAdmittance,
   impedanceFromReflection,
+  normalizeImpedance,
   reflectionFromAdmittance,
   reflectionFromImpedance,
   reflectionThroughLine,
@@ -22,7 +25,7 @@ import {
   scale,
   vswrFromReflection,
 } from '../core';
-import { type TypedValue, type ValueType, TYPE_INFO, TypeMismatch, isPlain, plainType } from './types';
+import { type TypedValue, type ValueType, TYPE_INFO, TypeMismatch, isPlain, plainType, withArticle } from './types';
 
 export interface FunctionContext {
   /** Workspace reference impedance in ohms. */
@@ -43,7 +46,7 @@ const label = (t: ValueType) => TYPE_INFO[t].label;
 const real = (x: number): TypedValue => ({ type: 'real', value: complex(x, 0) });
 
 function plainArg(name: string, v: TypedValue): Complex {
-  if (!isPlain(v.type)) throw new TypeMismatch(`${name}() expects a plain number, not a ${label(v.type)}`);
+  if (!isPlain(v.type)) throw new TypeMismatch(`${name}() expects a plain number, not ${withArticle(label(v.type))}`);
   return v.value;
 }
 
@@ -94,7 +97,7 @@ export function toReflection(v: TypedValue, ctx: FunctionContext, name: string):
       ctx.noteZ0();
       return reflectionFromImpedance(scale(v.value, 1 / ctx.z0));
     default:
-      throw new TypeMismatch(`${name}() needs an impedance, admittance or reflection coefficient, not a ${label(v.type)}`);
+      throw new TypeMismatch(`${name}() needs an impedance, admittance or reflection coefficient, not ${withArticle(label(v.type))}`);
   }
 }
 
@@ -127,6 +130,110 @@ function converter(target: 'impedance' | 'admittance' | 'reflection' | 'physical
       if (target === 'admittance' && x!.type === 'impedance') return { type: target, value: admittanceFromImpedance(x!.value) };
       if (target === 'impedance' && x!.type === 'admittance') return { type: target, value: impedanceFromAdmittance(x!.value) };
       return { type: target, value: fromReflection(toReflection(x!, ctx, name), target, ctx) };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Series and shunt elements
+// ---------------------------------------------------------------------------
+
+type ElementDomain = 'impedance' | 'admittance';
+
+/** Normalised z or y of a chart point, using the core conversions directly. */
+function pointIn(domain: ElementDomain, x: TypedValue, ctx: FunctionContext): Complex {
+  let z: Complex;
+  switch (x.type) {
+    case 'impedance':
+      z = x.value;
+      break;
+    case 'admittance':
+      return domain === 'admittance' ? x.value : impedanceFromAdmittance(x.value);
+    case 'reflection':
+      return domain === 'impedance' ? impedanceFromReflection(x.value) : admittanceFromReflection(x.value);
+    case 'physicalImpedance':
+      ctx.noteZ0();
+      z = normalizeImpedance(x.value, ctx.z0);
+      break;
+    default:
+      throw new TypeMismatch(`unreachable: ${x.type}`);
+  }
+  return domain === 'impedance' ? z : admittanceFromImpedance(z);
+}
+
+/** Convert a normalised z or y back into the type of the original point. */
+function pointOut(domain: ElementDomain, v: Complex, type: ValueType, ctx: FunctionContext): Complex {
+  const z = domain === 'impedance' ? v : impedanceFromAdmittance(v);
+  switch (type) {
+    case 'impedance':
+      return z;
+    case 'admittance':
+      return domain === 'admittance' ? v : admittanceFromImpedance(v);
+    case 'reflection':
+      return domain === 'impedance' ? reflectionFromImpedance(v) : reflectionFromAdmittance(v);
+    case 'physicalImpedance':
+      ctx.noteZ0();
+      return denormalizeImpedance(z, ctx.z0);
+    default:
+      throw new TypeMismatch(`unreachable: ${type}`);
+  }
+}
+
+/**
+ * Element value in the operation's domain (normalised).
+ *   plain number      → already in the domain (normalised x for series, b for shunt)
+ *   z / y             → converted to the domain (1/· across domains)
+ *   Z (Ω)             → normalised by Z₀, then converted
+ * A plain number next to a physical-impedance point is ambiguous (ohms or
+ * normalised?) and rejected, consistent with `ZL + j10` being an error.
+ */
+function elementIn(domain: ElementDomain, e: TypedValue, x: TypedValue, ctx: FunctionContext, name: string): Complex {
+  if (isPlain(e.type)) {
+    if (x.type === 'physicalImpedance') {
+      throw new TypeMismatch(
+        `${name}(): the point is in ohms but the element is a plain number, which is ambiguous. ` +
+          `Write Z(…) for an element in ohms or z(…) for a normalized one`,
+      );
+    }
+    return e.value;
+  }
+  switch (e.type) {
+    case 'impedance':
+      return domain === 'impedance' ? e.value : admittanceFromImpedance(e.value);
+    case 'admittance':
+      return domain === 'admittance' ? e.value : impedanceFromAdmittance(e.value);
+    case 'physicalImpedance': {
+      ctx.noteZ0();
+      const z = normalizeImpedance(e.value, ctx.z0);
+      return domain === 'impedance' ? z : admittanceFromImpedance(z);
+    }
+    default:
+      throw new TypeMismatch(
+        `${name}() element must be an impedance, admittance or plain number, not ${withArticle(label(e.type))}`,
+      );
+  }
+}
+
+/**
+ * series(x, e): z_out = z(x) + e   ·   shunt(x, e): y_out = y(x) + e.
+ * The result has the type of x (z, y, Γ or Z), like line().
+ */
+function elementOperation(domain: ElementDomain, description: string): FunctionSpec {
+  return {
+    arity: [2],
+    signature: '(x, e)',
+    description,
+    apply: ([x, e], ctx, name) => {
+      if (!TYPE_INFO[x!.type].plottable) {
+        throw new TypeMismatch(
+          isPlain(x!.type)
+            ? `${name}() needs a point with an RF meaning; wrap the number in z(…), y(…), gamma(…) or Z(…)`
+            : `${name}() needs an impedance, admittance or reflection coefficient, not ${withArticle(label(x!.type))}`,
+        );
+      }
+      const element = elementIn(domain, e!, x!, ctx, name);
+      const sum = add(pointIn(domain, x!, ctx), element);
+      return { type: x!.type, value: pointOut(domain, sum, x!.type, ctx) };
     },
   };
 }
@@ -176,7 +283,7 @@ export const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
     description: 'declare a real number as an electrical length in λ',
     apply: ([x]) => {
       if (x!.type === 'length') return x!;
-      if (x!.type !== 'real') throw new TypeMismatch(`len() expects a real number of wavelengths, not a ${label(x!.type)}`);
+      if (x!.type !== 'real') throw new TypeMismatch(`len() expects a real number of wavelengths, not ${withArticle(label(x!.type))}`);
       return { type: 'length', value: x!.value };
     },
   },
@@ -195,6 +302,16 @@ export const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
     apply: ([x], ctx, name) => real(returnLossDb(toReflection(x!, ctx, name))),
   },
 
+  // --- RF network operations -------------------------------------------------------
+  series: elementOperation(
+    'impedance',
+    'x with a series element e: z(x) + e. e is a normalized impedance, or a typed z, y or Z; keeps the type of x',
+  ),
+  shunt: elementOperation(
+    'admittance',
+    'x with a shunt element e: y(x) + e. e is a normalized admittance, or a typed y, z or Z; keeps the type of x',
+  ),
+
   // --- RF transformations ---------------------------------------------------------
   line: {
     arity: [2],
@@ -202,7 +319,7 @@ export const FUNCTIONS: Readonly<Record<string, FunctionSpec>> = {
     description: 'x seen through a lossless line of l wavelengths (toward generator); keeps the type of x',
     apply: ([x, l], ctx, name) => {
       if (l!.type !== 'length' && l!.type !== 'real') {
-        throw new TypeMismatch(`line() length must be a real number of wavelengths, not a ${label(l!.type)}`);
+        throw new TypeMismatch(`line() length must be a real number of wavelengths, not ${withArticle(label(l!.type))}`);
       }
       const rotated = reflectionThroughLine(toReflection(x!, ctx, name), l!.value.re);
       return { type: x!.type, value: fromReflection(rotated, x!.type, ctx) };

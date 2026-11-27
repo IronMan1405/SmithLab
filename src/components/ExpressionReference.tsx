@@ -212,6 +212,20 @@ export function ExpressionReference({ takenNames, onInsert, onInsertSet, onClose
           <code>y()</code>, <code>gamma()</code> and <code>Z()</code> declare its type.
         </p>
         <FunctionList items={functionsInCategory('rf')} onInsert={onInsert} />
+        <ul className="ref-rules">
+          <li>
+            <code>series(x, e)</code> adds e in the impedance domain, <code>shunt(x, e)</code> in the admittance domain; both
+            return the type of x, so chains need no <code>1/z</code> steps.
+          </li>
+          <li>
+            Signs: series <code>+jx</code> inductor, <code>−jx</code> capacitor; shunt <code>+jb</code> capacitor,{' '}
+            <code>−jb</code> inductor.
+          </li>
+          <li>
+            A plain-number element is normalized. If x is in ohms, write the element as <code>Z(…)</code> (ohms) or{' '}
+            <code>z(…)</code> (normalized).
+          </li>
+        </ul>
       </Section>
 
       <Section title="Curves and constructions">

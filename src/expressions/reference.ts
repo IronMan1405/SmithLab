@@ -60,6 +60,8 @@ export const FUNCTION_META: Readonly<Record<string, FunctionMeta>> = {
   vswr: { category: 'rf', returns: T('real'), example: 'vswr(z(2))', exampleType: 'real' },
   rl: { category: 'rf', returns: `${T('real')} (dB)`, example: 'rl(z(2))', exampleType: 'real' },
   line: { category: 'rf', returns: 'same type as x', example: 'line(z(0.5 + j1.2), 0.125)', exampleType: 'impedance' },
+  series: { category: 'rf', returns: 'same type as x', example: 'series(z(1 - j1), j1)', exampleType: 'impedance' },
+  shunt: { category: 'rf', returns: 'same type as x', example: 'shunt(z(2), j0.5)', exampleType: 'impedance' },
   // curve constructions
   vswrCircle: { category: 'curve', returns: 'curve (parameter: WTG, 0–0.5λ)', example: 'vswrCircle(2)', exampleType: 'curve' },
   rCircle: { category: 'curve', returns: 'curve (parameter: x)', example: 'rCircle(1)', exampleType: 'curve' },
@@ -240,6 +242,30 @@ export const EXAMPLE_SETS: readonly ExampleSet[] = [
       { text: 'lD = 0.2', slider: LENGTH_SLIDER },
       { text: 'pathD = linePath(zD, lD)' },
       { text: 'guideD = radial(zD)' },
+    ],
+  },
+  {
+    id: 'lnetwork',
+    title: 'L-network with sliders',
+    summary: 'Shunt b then series x: b = 0.5, x = 1 matches z = 2 to 1 + j0.',
+    lines: [
+      { text: 'zM = 2' },
+      { text: 'bM = 0.5', slider: { min: -2, max: 2, step: 0.01 } },
+      { text: 'xM = 1', slider: { min: -2, max: 2, step: 0.01 } },
+      { text: 'zM1 = shunt(zM, j*bM)' },
+      { text: 'zM2 = series(zM1, j*xM)' },
+      { text: 'sweepM = curve(series(zM1, j*t), t, -2, 2)' },
+    ],
+  },
+  {
+    id: 'ohms',
+    title: 'Elements in ohms',
+    summary: 'Physical impedances stay in Ω; elements in Ω use Z(…). Try changing Z₀.',
+    lines: [
+      { text: 'ZE = 100 + j50' },
+      { text: 'ZE1 = series(ZE, Z(-j50))' },
+      { text: 'ZE2 = shunt(ZE1, Z(j200))' },
+      { text: 'stubE = shunt(z(0.4 - j0.3), y(line(z(0), 0.1)))' },
     ],
   },
   {

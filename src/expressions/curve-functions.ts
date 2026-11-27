@@ -27,7 +27,7 @@ import {
   vswrCircleCurve,
 } from '../geometry';
 import { type FunctionContext, toReflection } from './functions';
-import { type TypedValue, type Value, TYPE_INFO, TypeMismatch, isCurve } from './types';
+import { type TypedValue, type Value, TYPE_INFO, TypeMismatch, isCurve, withArticle } from './types';
 
 export interface CurveFunctionSpec {
   readonly arity: readonly number[];
@@ -45,12 +45,12 @@ function scalar(name: string, v: Value): TypedValue {
 
 function realNumber(name: string, v: Value, what: string): number {
   const s = scalar(name, v);
-  if (s.type !== 'real' && s.type !== 'length') throw new TypeMismatch(`${name}() needs a real ${what}, not a ${label(v)}`);
+  if (s.type !== 'real' && s.type !== 'length') throw new TypeMismatch(`${name}() needs a real ${what}, not ${withArticle(label(v))}`);
   return s.value.re;
 }
 
 function curveArg(name: string, v: Value): Curve {
-  if (!isCurve(v)) throw new TypeMismatch(`${name}() expects a curve, not a ${label(v)}`);
+  if (!isCurve(v)) throw new TypeMismatch(`${name}() expects a curve, not ${withArticle(label(v))}`);
   return v.curve;
 }
 
@@ -59,7 +59,7 @@ function partOf(name: string, v: Value, allowed: TypedValue['type'], part: 're' 
   const s = scalar(name, v);
   if (s.type === 'real') return s.value.re;
   if (s.type === allowed) return s.value[part];
-  throw new TypeMismatch(`${name}() needs a real ${what} or a ${TYPE_INFO[allowed].label}, not a ${label(v)}`);
+  throw new TypeMismatch(`${name}() needs a real ${what} or ${withArticle(TYPE_INFO[allowed].label)}, not ${withArticle(label(v))}`);
 }
 
 const curve = (c: Curve): Value => ({ type: 'curve', curve: c });

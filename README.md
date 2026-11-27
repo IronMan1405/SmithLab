@@ -541,6 +541,38 @@ The expression text is still the only stored state. A curve is recomputed throug
 - Computed points (`intersect(…)`, `1/zL`, …) are locked. Their cursor doesn't offer a drag, and the inspector explains why.
 - A drag that would need an infinite value (an impedance at Γ = 1) is ignored.
 
+### Series and shunt elements (Milestone 3D, Phase 1)
+
+```
+series(x, e)    z_out = z(x) + e      shunt(x, e)    y_out = y(x) + e
+```
+
+**The point `x`.**
+- `x` is any value with a chart position: z, y, Γ or Z in Ω.
+- The result has **the same type as `x`**, as with `line()`, so chains need no `1/z` steps: `z2 = shunt(line(zL, 0.125), j0.5)` stays an impedance.
+- A plain number, a length or a curve as `x` is rejected.
+
+**The element `e`** is interpreted by its type:
+
+| Element type | in `series` | in `shunt` |
+|---|---|---|
+| plain number | normalized impedance (`j0.5` inductor, `0.2` resistor) | normalized admittance (`j0.5` capacitor) |
+| z | used as is | 1/z |
+| y | 1/y | used as is |
+| Z (Ω) | Z/Z₀ | Z₀/Z |
+| Γ, λ, curve | error | error |
+
+- **Ambiguity rule:** if `x` is in ohms, a plain-number element is rejected as ambiguous, and the error suggests `Z(…)` (ohms) or `z(…)` (normalized). This matches the existing rule that `ZL + j10` is an error.
+- **Sign conventions:**
+  - series: +jx inductive, −jx capacitive;
+  - shunt: +jb capacitive, −jb inductive.
+
+**Implementation.**
+- The operations are ordinary registry entries using the core conversions directly: `normalizeImpedance`/`denormalizeImpedance`, the z↔y reciprocals, and the Γ conversions. The evaluation engine is unchanged.
+- Ω points and Ω elements record a Z₀ dependency, so changing Z₀ recomputes exactly those expressions.
+- Sweeps already work through `curve()`, e.g. `curve(series(zM1, j*t), t, -2, 2)` follows the constant-r circle.
+- Stubs are compositions rather than functions, e.g. `shunt(x, y(line(z(0), lS)))`.
+
 ### Built-in expression reference
 
 The **? Reference** button in the expression panel opens a collapsible reference covering:
@@ -603,6 +635,9 @@ normalised z is unchanged and its physical Z = z·Z₀ is re-derived.
 
 ## Known limitations
 
+- **Series/shunt sweeps are sampled, not exact.** Sweeps use `curve()`. Exact `seriesPath`/`shuntPath` arcs are planned for Phase 2.
+- **No curves as inputs.** `series`, `shunt` and `line` accept points only.
+- **No siemens type.** Shunt elements are given as normalized b, or in ohms via `Z(…)`.
 - **Radial guides can't be referenced in expressions.** Guides attached to manual points are workspace constructions, so their intersections can be inspected but not turned into `intersect()` expressions. Use `radial(x)` on an expression point when an expression-level guide is needed.
 - **Admittance labels are smaller when both grids are on.** With both grids enabled they sit inside the boundary and can be dense at small chart sizes.
 - **Only literal expression points are draggable.** Points computed from other expressions are locked, by design.

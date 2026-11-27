@@ -80,6 +80,11 @@ export class TypeMismatch extends Error {
 
 const label = (t: ValueType) => TYPE_INFO[t].label;
 
+/** "a normalized impedance", "an electrical length (λ)". */
+export function withArticle(text: string): string {
+  return /^[aeiou]/i.test(text) ? `an ${text}` : `a ${text}`;
+}
+
 export type BinaryOp = '+' | '-' | '*' | '/' | '^';
 
 /**
@@ -92,7 +97,7 @@ export function binaryResultType(op: BinaryOp, a: ValueType, b: ValueType, bIsRe
   const bPlain = isPlain(b);
 
   if (op === '^') {
-    if (!bPlain) throw new TypeMismatch(`An exponent must be a plain number, not a ${label(b)}`);
+    if (!bPlain) throw new TypeMismatch(`An exponent must be a plain number, not ${withArticle(label(b))}`);
     if (a === 'length') throw new TypeMismatch('Cannot raise an electrical length to a power');
     return 'plain';
   }
@@ -101,7 +106,7 @@ export function binaryResultType(op: BinaryOp, a: ValueType, b: ValueType, bIsRe
 
   if (op === '+' || op === '-') {
     if (a === b) return a === 'reflection' ? 'complex' : a;
-    if (!aPlain && !bPlain) throw new TypeMismatch(`Cannot ${op === '+' ? 'add' : 'subtract'} a ${label(a)} and a ${label(b)}`);
+    if (!aPlain && !bPlain) throw new TypeMismatch(`Cannot ${op === '+' ? 'add' : 'subtract'} ${withArticle(label(a))} and ${withArticle(label(b))}`);
     const domain = aPlain ? b : a;
     const plainIsReal = aPlain ? aIsReal : bIsReal;
     switch (domain) {
@@ -152,7 +157,7 @@ export function binaryResultType(op: BinaryOp, a: ValueType, b: ValueType, bIsRe
   }
   if (a === 'length' || b === 'length') {
     if (a === b) return 'plain';
-    throw new TypeMismatch(`Cannot divide a ${label(a)} by a ${label(b)}`);
+    throw new TypeMismatch(`Cannot divide ${withArticle(label(a))} by ${withArticle(label(b))}`);
   }
   return 'complex';
 }
@@ -203,7 +208,7 @@ export function applyDeclaredType<V extends Value>(name: string, value: V): V {
   if (value.type === 'curve') {
     if (declared) {
       throw new TypeMismatch(
-        `"${name}" is named like a ${label(declared)}, but the expression is a curve. Choose a name without the ${declared === 'reflection' ? 'gamma' : name[0]} prefix, e.g. c1`,
+        `"${name}" is named like ${withArticle(label(declared))}, but the expression is a curve. Choose a name without the ${declared === 'reflection' ? 'gamma' : name[0]} prefix, e.g. c1`,
       );
     }
     return value;
@@ -217,7 +222,7 @@ export function applyDeclaredType<V extends Value>(name: string, value: V): V {
   }
   const ctor = TYPE_INFO[declared].constructorName;
   throw new TypeMismatch(
-    `"${name}" is named like a ${label(declared)}, but the expression is a ${label(value.type)}` +
+    `"${name}" is named like ${withArticle(label(declared))}, but the expression is ${withArticle(label(value.type))}` +
       (ctor ? `. Convert it explicitly with ${ctor}(…)` : ''),
   );
 }
