@@ -42,6 +42,7 @@ export function polylinesToPath(polylines: readonly Polyline[]): string {
 
 export function curvePath(curve: Curve, unitsPerPixel: number): string {
   if (curve.shape) return shapeToPath(curve.shape);
+  if (curve.pieces) return curve.pieces.map((s) => shapeToPath(s)).join(' ');
   const bucket = toleranceBucket(unitsPerPixel);
   let byTolerance = cache.get(curve);
   if (!byTolerance) {

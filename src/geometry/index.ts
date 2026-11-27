@@ -12,3 +12,5 @@ export * from './curve-sampling';
 export * from './intersections';
 export * from './chart-mode';
 export * from './guide-annotations';
+export * from './mobius';
+export * from './element-sweep';

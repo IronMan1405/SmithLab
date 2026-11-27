@@ -282,6 +282,17 @@ function finalize(points: readonly Intersection[], tol: number): Intersection[] 
 }
 
 export function intersectCurves(a: Curve, b: Curve, tolerance = INTERSECTION_TOLERANCE): IntersectionResult {
+  // Curves made of exact pieces (multi-arc element sweeps): intersect piece by piece.
+  if (a.pieces || b.pieces) {
+    const split = (c: Curve): Curve[] => (c.pieces ? c.pieces.map((s) => ({ ...c, shape: s, pieces: undefined })) : [c]);
+    const results = split(a).flatMap((pa) => split(b).map((pb) => intersectCurves(pa, pb, tolerance)));
+    const gaps = results.map((r) => r.closestApproach).filter((g): g is number => g !== null);
+    return {
+      points: finalize(results.flatMap((r) => r.points), tolerance),
+      coincident: results.some((r) => r.coincident),
+      closestApproach: gaps.length ? Math.min(...gaps) : null,
+    };
+  }
   if (a.shape && b.shape) return shapeShape(a.shape, b.shape, tolerance);
   let points: Intersection[];
   if (a.shape) points = parametricShape(b, a.shape);

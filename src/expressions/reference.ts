@@ -70,6 +70,18 @@ export const FUNCTION_META: Readonly<Record<string, FunctionMeta>> = {
   bCircle: { category: 'curve', returns: 'curve (parameter: g)', example: 'bCircle(0.5)', exampleType: 'curve' },
   linePath: { category: 'curve', returns: 'curve (parameter: l)', example: 'linePath(z(2), 0.25)', exampleType: 'curve' },
   radial: { category: 'curve', returns: 'curve (parameter: |Γ|, 0–1)', example: 'radial(z(0.5 + j1.2))', exampleType: 'curve' },
+  seriesPath: {
+    category: 'curve',
+    returns: "curve (parameter: the element's own value — x, r, X/R in Ω, b, g — or s ∈ 0–1)",
+    example: 'seriesPath(z(1 - j1), j2)',
+    exampleType: 'curve',
+  },
+  shuntPath: {
+    category: 'curve',
+    returns: "curve (parameter: the element's own value — b, g, x, r, X/R in Ω — or s ∈ 0–1)",
+    example: 'shuntPath(z(2), -j1, j1)',
+    exampleType: 'curve',
+  },
   rotate: { category: 'curve', returns: 'curve (same parameter as c)', example: 'rotate(gCircle(1), -4*pi*0.1)', exampleType: 'curve' },
   // queries
   intersect: {
@@ -266,7 +278,8 @@ export const EXAMPLE_SETS: readonly ExampleSet[] = [
       { text: 'xM = 1', slider: { min: -2, max: 2, step: 0.01 } },
       { text: 'zM1 = shunt(zM, j*bM)' },
       { text: 'zM2 = series(zM1, j*xM)' },
-      { text: 'sweepM = curve(series(zM1, j*t), t, -2, 2)' },
+      { text: 'shuntM = shuntPath(zM, -j2, j2)' },
+      { text: 'sweepM = seriesPath(zM1, -j2, j2)' },
     ],
   },
   {

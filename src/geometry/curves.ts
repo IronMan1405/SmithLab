@@ -30,6 +30,8 @@ export type CurveKind =
   | 'susceptanceCircle'
   | 'linePath'
   | 'radialGuide'
+  | 'seriesPath'
+  | 'shuntPath'
   | 'parametric';
 
 /** What the parameter of `point(t)` means, for inspection. */
@@ -72,6 +74,17 @@ export interface Curve {
   readonly parameter: CurveParameter;
   /** Γ at parameter t, or null where the curve is undefined (singularity). */
   readonly point: (t: number) => Complex | null;
+  /**
+   * Element sweeps: the parameter sub-intervals that lie on the passive chart.
+   * `at()` rejects values outside them rather than clamping.
+   */
+  readonly passive?: readonly (readonly [number, number])[];
+  /**
+   * Exact geometry of a curve made of several disjoint exact pieces (an
+   * element sweep whose passive part is two arcs of one circle). Only set
+   * when `shape` is null; drawn and intersected piece by piece.
+   */
+  readonly pieces?: readonly Shape[];
 }
 
 const fmt = (v: number) => String(Number(v.toPrecision(6)));
@@ -276,6 +289,7 @@ export function rotateCurve(curve: Curve, theta: number, options: { annotate?: b
   const annotate = options.annotate ?? true;
   const phasor = unitPhasor(theta);
   const shape = curve.shape ? rotateShape(curve.shape, theta) : null;
+  const pieces = curve.pieces?.map((s) => rotateShape(s, theta));
   const point = (t: number): Complex | null => {
     const p = curve.point(t);
     return p ? rotatePoint(p, phasor) : null;
@@ -290,6 +304,7 @@ export function rotateCurve(curve: Curve, theta: number, options: { annotate?: b
     label: annotate ? `${curve.label}, rotated` : curve.label,
     properties: annotate ? [...properties, { label: 'rotation', value: `${fmt(theta)} rad (${fmt(deg)}°)` }] : properties,
     shape,
+    ...(pieces ? { pieces } : {}),
     point,
     anchor,
   };
